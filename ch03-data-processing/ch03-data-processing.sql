@@ -1,3 +1,5 @@
+-- SQL 연습 문제 해답
+
 select EmployeeID, count(*) n
 from Orders
 group by EmployeeID
