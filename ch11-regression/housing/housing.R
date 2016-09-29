@@ -1,4 +1,4 @@
-# 12. 빅데이터 회귀분석 II. 자전거 렌탈수요(bike sharing) 자료분석
+# 빅데이터 회귀분석. 부동산 가격 예측
 #
 if (!file.exists("housing.data")){
   system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/housing/housing.data > housing.data')
