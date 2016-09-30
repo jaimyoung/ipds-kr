@@ -1,8 +1,12 @@
 # 빅데이터 분별분석. 암 예측.
 #
-if (!file.exists("breast-cancer-wisconsin.data")){
-  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data > breast-cancer-wisconsin.data')
-  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.names > breast-cancer-wisconsin.names')
+if (!file.exists("wdbc.data")){
+  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.data > wdbc.data')
+  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wdbc.names > wdbc.names')
+}
+
+rmse <- function(yi, yhat_i){
+  sqrt(mean((yi - yhat_i)^2))
 }
 
 binomial_deviance <- function(y_obs, yhat){
@@ -39,29 +43,40 @@ library(data.table)
 library(ROCR)
 library(gridExtra)
 
-data <- tbl_df(read.table("breast-cancer-wisconsin.data", strip.white = TRUE,
-                          sep=",", header = FALSE, na.strings = '?'))
-names(data) <- c('id', 'thickness', 'unif_cell_size', 'unif_cell_shape',
-                 'marginal_adhesion', 'cell_size', 'bare_nuclei',
-                 'bland_cromatin', 'normal_nucleoli', 'mitoses', 'class')
+data <- tbl_df(read.table("wdbc.data", strip.white = TRUE,
+                          sep=",", header = FALSE))
+feature_names <- c('radius', 'texture', 'perimeter', 'area', 'smoothness',
+                   'compactness', 'concavity', 'concave_points', 'symmetry', 'fractal_dim')
+names(data) <-
+  c('id', 'class',
+    paste0('mean_', feature_names),
+    paste0('se_', feature_names),
+    paste0('worst_', feature_names))
 
 glimpse(data)
 
-# 1. 결측치 처리
-data$bare_nuclei[is.na(data$bare_nuclei)] <- median(data$bare_nuclei, na.rm = TRUE)
-# 2. id 변수 제거
+
+# 1. id 변수 제거
 data <- data %>% dplyr::select(-id)
-# 3. class 변수를 인자 변수로 변환
-data$class <- factor(ifelse(data$class == 2, 0, 1))
+# 2. class 변수를 인자 변수로 변환
+data$class <- factor(ifelse(data$class == 'B', 0, 1))
 
 glimpse(data)
-
 
 summary(data)
 
-pairs(data %>% sample_n(min(1000, nrow(data))))
+pairs(data %>% dplyr::select(class, starts_with('mean_')) %>%
+        sample_n(min(1000, nrow(data))),
+      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+      upper.panel = panel.cor)
 
-pairs(data %>% sample_n(min(1000, nrow(data))),
+pairs(data %>% dplyr::select(class, starts_with('se_')) %>%
+        sample_n(min(1000, nrow(data))),
+      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+      upper.panel = panel.cor)
+
+pairs(data %>% dplyr::select(class, starts_with('worst_')) %>%
+        sample_n(min(1000, nrow(data))),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
 
@@ -69,13 +84,13 @@ library(ggplot2)
 library(dplyr)
 library(gridExtra)
 p1 <- data %>% ggplot(aes(class)) + geom_bar()
-p2 <- data %>% ggplot(aes(class, unif_cell_size)) +
+p2 <- data %>% ggplot(aes(class, mean_concave_points)) +
   geom_jitter(col='gray') +
   geom_boxplot(alpha=.5)
-p3 <- data %>% ggplot(aes(class, bare_nuclei)) +
+p3 <- data %>% ggplot(aes(class, mean_radius)) +
   geom_jitter(col='gray') +
   geom_boxplot(alpha=.5)
-p4 <- data %>% ggplot(aes(unif_cell_size, bare_nuclei)) +
+p4 <- data %>% ggplot(aes(mean_concave_points, mean_radius)) +
   geom_jitter(col='gray') + geom_smooth()
 grid.arrange(p1, p2, p3, p4, ncol=2)
 
@@ -93,62 +108,50 @@ validation <- data[validate_idx,]
 test <- data[test_idx,]
 
 
-# 선형회귀모형 (linear regression model)
-data_lm_full <- lm(quality ~ ., data=training)
+#-----------------
+# 로지스틱 회귀모형
+data_lm_full <- glm(class ~ ., data=training, family=binomial)
 summary(data_lm_full)
+anova(data_lm_full)
 
-predict(data_lm_full, newdata = data[1:5,])
+predict(data_lm_full, newdata = data[1:5,], type='response')
 
-# 선형회귀모형에서 변수선택
-data_lm_full_2 <- lm(quality ~ .^2, data=training)
-summary(data_lm_full_2)
-
-length(coef(data_lm_full_2))
-
-library(MASS)
-data_step <- stepAIC(data_lm_full,
-                     scope = list(upper = ~ .^2, lower = ~1))
-
-data_step
-anova(data_step)
-summary(data_step)
-length(coef(data_step))
-
+table(y_obs, yhat_lm)
 
 # 모형평가
-y_obs <- validation$quality
-yhat_lm <- predict(data_lm_full, newdata=validation)
-yhat_lm_2 <- predict(data_lm_full_2, newdata=validation)
-yhat_step <- predict(data_step, newdata=validation)
-rmse(y_obs, yhat_lm)
-rmse(y_obs, yhat_lm_2)
-rmse(y_obs, yhat_step)
+y_obs <- as.numeric(as.character(validation$class))
+yhat_lm <- predict(data_lm_full, newdata = validation, type='response')
+pred_lm <- prediction(yhat_lm, y_obs)
+performance(pred_lm, "auc")@y.values[[1]]
+binomial_deviance(y_obs, yhat_lm)
 
-
+#-----------------
 # 라쏘 모형 적합
-xx <- model.matrix(quality ~ .^2-1, data)
-# xx <- model.matrix(quality ~ .-1, data)
+# xx <- model.matrix(class ~ .^2-1, data)
+xx <- model.matrix(class ~ .-1, data)
 x <- xx[training_idx, ]
-y <- training$quality
+y <- as.numeric(as.character(training$class))
 glimpse(x)
 
-data_cvfit <- cv.glmnet(x, y)
+data_cvfit <- cv.glmnet(x, y, family = "binomial")
 plot(data_cvfit)
-
 
 coef(data_cvfit, s = c("lambda.1se"))
 coef(data_cvfit, s = c("lambda.min"))
 
 
-predict.cv.glmnet(data_cvfit, s="lambda.min", newx = x[1:5,])
+predict.cv.glmnet(data_cvfit, s="lambda.min", newx = x[1:5,], type='response')
 
-y_obs <- validation$quality
-yhat_glmnet <- predict(data_cvfit, s="lambda.min", newx=xx[validate_idx,])
+yhat_glmnet <- predict(data_cvfit, s="lambda.min", newx=xx[validate_idx,], type='response')
 yhat_glmnet <- yhat_glmnet[,1] # change to a vector from [n*1] matrix
-rmse(y_obs, yhat_glmnet)
+pred_glmnet <- prediction(yhat_glmnet, y_obs)
+performance(pred_glmnet, "auc")@y.values[[1]]
+binomial_deviance(y_obs, yhat_glmnet)
 
+
+#-----------------
 # 나무모형
-data_tr <- rpart(quality ~ ., data = training)
+data_tr <- rpart(class ~ ., data = training)
 data_tr
 
 printcp(data_tr)
@@ -161,12 +164,16 @@ par(opar)
 
 
 yhat_tr <- predict(data_tr, validation)
-rmse(y_obs, yhat_tr)
+yhat_tr <- yhat_tr[,"1"]
+pred_tr <- prediction(yhat_tr, y_obs)
+performance(pred_tr, "auc")@y.values[[1]]
+binomial_deviance(y_obs, yhat_tr)
 
 
+#-----------------
 # 랜덤포레스트
 set.seed(1607)
-data_rf <- randomForest(quality ~ ., training)
+data_rf <- randomForest(class ~ ., training)
 data_rf
 
 opar <- par(mfrow=c(1,2))
@@ -175,38 +182,48 @@ varImpPlot(data_rf)
 par(opar)
 
 
-yhat_rf <- predict(data_rf, newdata=validation)
-rmse(y_obs, yhat_rf)
+yhat_rf <- predict(data_rf, newdata=validation, type='prob')[,'1']
+pred_rf <- prediction(yhat_rf, y_obs)
+performance(pred_rf, "auc")@y.values[[1]]
+binomial_deviance(y_obs, yhat_rf)
 
 
+#-----------------
 # 부스팅
 set.seed(1607)
-data_gbm <- gbm(quality ~ ., data=training,
-                n.trees=40000, cv.folds=3, verbose = TRUE)
+data_for_gbm <-
+  training %>%
+  mutate(class=as.numeric(as.character(class)))
+data_gbm <- gbm(class ~ ., data=data_for_gbm, distribution="bernoulli",
+              n.trees=50000, cv.folds=3, verbose=TRUE)
 (best_iter = gbm.perf(data_gbm, method="cv"))
 
-yhat_gbm <- predict(data_gbm, n.trees=best_iter, newdata=validation)
-rmse(y_obs, yhat_gbm)
+yhat_gbm <- predict(data_gbm, n.trees=best_iter, newdata=validation, type='response')
+pred_gbm <- prediction(yhat_gbm, y_obs)
+performance(pred_gbm, "auc")@y.values[[1]]
+binomial_deviance(y_obs, yhat_gbm)
 
-
+#------------------
 # 최종 모형선택과  테스트셋 오차계산
-data.frame(lm = rmse(y_obs, yhat_step),
-           glmnet = rmse(y_obs, yhat_glmnet),
-           rf = rmse(y_obs, yhat_rf),
-           gbm = rmse(y_obs, yhat_gbm)) %>%
-  reshape2::melt(value.name = 'rmse', variable.name = 'method')
+data.frame(method=c('lm', 'glmnet', 'rf', 'gbm'),
+           auc = c(performance(pred_lm, "auc")@y.values[[1]],
+                   performance(pred_glmnet, "auc")@y.values[[1]],
+                   performance(pred_rf, "auc")@y.values[[1]],
+                   performance(pred_gbm, "auc")@y.values[[1]]),
+           bin_dev = c(binomial_deviance(y_obs, yhat_lm),
+                       binomial_deviance(y_obs, yhat_glmnet),
+                       binomial_deviance(y_obs, yhat_rf),
+                       binomial_deviance(y_obs, yhat_gbm)))
 
-rmse(test$quality, predict(data_rf, newdata = test))
+# glmnet이 최종 승리자:
+y_obs_test <- as.numeric(as.character(test$class))
+yhat_glmnet_test <- predict(data_cvfit, s="lambda.min", newx=xx[test_idx,], type='response')
+yhat_glmnet_test <- yhat_glmnet_test[,1]
+pred_glmnet_test <- prediction(yhat_glmnet_test, y_obs_test)
+performance(pred_glmnet_test, "auc")@y.values[[1]]
+binomial_deviance(y_obs_test, yhat_glmnet_test)
 
-
-# 회귀분석의 오차의 시각화
-boxplot(list(lm = y_obs-yhat_step,
-             glmnet = y_obs-yhat_glmnet,
-             rf = y_obs-yhat_rf,
-             gbm = y_obs-yhat_gbm), ylab="Error in Validation Set")
-abline(h=0, lty=2, col='blue')
-
-
+# 예측값들의 상관관계
 pairs(data.frame(y_obs=y_obs,
                  yhat_lm=yhat_step,
                  yhat_glmnet=c(yhat_glmnet),
@@ -215,3 +232,28 @@ pairs(data.frame(y_obs=y_obs,
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
 
+
+#-----------
+# ROC 커브
+perf_lm <- performance(pred_lm, measure = "tpr", x.measure = "fpr")
+perf_glmnet <- performance(pred_glmnet, measure="tpr", x.measure="fpr")
+perf_rf <- performance(pred_rf, measure="tpr", x.measure="fpr")
+perf_gbm <- performance(pred_gbm, measure="tpr", x.measure="fpr")
+
+plot(perf_lm, col='black', main="ROC Curve")
+plot(perf_glmnet, add=TRUE, col='blue')
+plot(perf_rf, add=TRUE, col='red')
+plot(perf_gbm, add=TRUE, col='cyan')
+abline(0,1)
+legend('bottomright', inset=.1,
+    legend=c("GLM", "glmnet", "RF", "GBM"),
+    col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
+
+
+pairs(data.frame(y_obs=y_obs,
+                 yhat_lm=yhat_lm,
+                 yhat_glmnet=c(yhat_glmnet),
+                 yhat_rf=yhat_rf,
+                 yhat_gbm=yhat_gbm),
+      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+      upper.panel = panel.cor)
