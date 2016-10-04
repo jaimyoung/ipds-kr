@@ -41,36 +41,78 @@ library(gridExtra)
 
 data <- tbl_df(read.table("spambase.data", strip.white = TRUE,
                           sep=",", header = FALSE))
+names(data) <-
+  c('word_freq_make', 'word_freq_address', 'word_freq_all', 'word_freq_3d', 'word_freq_our',
+    'word_freq_over', 'word_freq_remove', 'word_freq_internet', 'word_freq_order', 'word_freq_mail',
+    'word_freq_receive', 'word_freq_will', 'word_freq_people', 'word_freq_report', 'word_freq_addresses',
+    'word_freq_free', 'word_freq_business', 'word_freq_email', 'word_freq_you', 'word_freq_credit',
+    'word_freq_your', 'word_freq_font', 'word_freq_000', 'word_freq_money', 'word_freq_hp',
+    'word_freq_hpl', 'word_freq_george', 'word_freq_650', 'word_freq_lab', 'word_freq_labs',
+    'word_freq_telnet', 'word_freq_857', 'word_freq_data', 'word_freq_415', 'word_freq_85',
+    'word_freq_technology', 'word_freq_1999', 'word_freq_parts', 'word_freq_pm', 'word_freq_direct',
+    'word_freq_cs', 'word_freq_meeting', 'word_freq_original', 'word_freq_project', 'word_freq_re',
+    'word_freq_edu', 'word_freq_table', 'word_freq_conference', 'char_freq_;', 'char_freq_(',
+    'char_freq_[', 'char_freq_!', 'char_freq_$', 'char_freq_#', 'capital_run_length_average',
+    'capital_run_length_longest', 'capital_run_length_total',
+    # 'spam'
+    'class'
+  )
 names(data)[58] <- 'class'
 data$class <- factor(data$class)
-
 
 glimpse(data)
 
 summary(data)
 
+set.seed(1610)
 pairs(data %>% dplyr::select(1:10, 58) %>%
         sample_n(min(1000, nrow(data))),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
 
+set.seed(1610)
+pairs(data %>% dplyr::select(48:57, 58) %>%
+        sample_n(min(1000, nrow(data))),
+      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+      upper.panel = panel.cor)
+
+#
+tmp <- as.data.frame(cor(data[,-58], as.numeric(data$class)))
+tmp <- tmp %>% rename(cor=V1)
+tmp$var <- rownames(tmp)
+tmp %>%
+  ggplot(aes(reorder(var, cor), cor)) +
+  geom_point() +
+  coord_flip()
+
+
 library(ggplot2)
 library(dplyr)
 library(gridExtra)
 p1 <- data %>% ggplot(aes(class)) + geom_bar()
-p2 <- data %>% ggplot(aes(factor(class), V7)) +
-  geom_jitter(col='gray') +
-  geom_boxplot(alpha=.5)
-p3 <- data %>% ggplot(aes(factor(class), V7)) +
+p2 <- data %>% ggplot(aes(class, `char_freq_$`)) +
   geom_jitter(col='gray') +
   geom_boxplot(alpha=.5) +
   scale_y_sqrt()
-p4 <- data %>% ggplot(aes(factor(class), V6)) +
+p3 <- data %>% ggplot(aes(`char_freq_$`, group=class, fill=class)) +
+  geom_density(alpha=.5) +
+  scale_x_sqrt() + scale_y_sqrt()
+p4 <- data %>% ggplot(aes(class, capital_run_length_longest)) +
   geom_jitter(col='gray') +
   geom_boxplot(alpha=.5) +
-  scale_y_sqrt()
+  scale_y_log10()
 grid.arrange(p1, p2, p3, p4, ncol=2)
 
+?'`'
+
+
+# 변수명의 특수문자 처리
+
+old_names <- names(data)
+new_names <- make.names(names(data), unique = TRUE)
+cbind(old_names, new_names) [old_names!=new_names, ]
+
+names(data) <- new_names
 
 # 트래인셋과 테스트셋의 구분
 set.seed(1606)
@@ -147,7 +189,7 @@ binomial_deviance(y_obs, yhat_tr)
 #-----------------
 # 랜덤포레스트
 set.seed(1607)
-data_rf <- randomForest(class ~ ., training)
+data_rf <- randomForest(class ~ ., data=training)
 data_rf
 
 opar <- par(mfrow=c(1,2))
@@ -169,7 +211,7 @@ data_for_gbm <-
   training %>%
   mutate(class=as.numeric(as.character(class)))
 data_gbm <- gbm(class ~ ., data=data_for_gbm, distribution="bernoulli",
-              n.trees=50000, cv.folds=3, verbose=TRUE)
+              n.trees=100000, cv.folds=3, verbose=TRUE)
 (best_iter = gbm.perf(data_gbm, method="cv"))
 
 yhat_gbm <- predict(data_gbm, n.trees=best_iter, newdata=validation, type='response')
@@ -189,7 +231,7 @@ data.frame(method=c('lm', 'glmnet', 'rf', 'gbm'),
                        binomial_deviance(y_obs, yhat_rf),
                        binomial_deviance(y_obs, yhat_gbm)))
 
-# glmnet이 최종 승리자:
+# glmnet이 최종 승리자인 경우:
 y_obs_test <- as.numeric(as.character(test$class))
 yhat_glmnet_test <- predict(data_cvfit, s="lambda.min", newx=xx[test_idx,], type='response')
 yhat_glmnet_test <- yhat_glmnet_test[,1]
@@ -197,9 +239,17 @@ pred_glmnet_test <- prediction(yhat_glmnet_test, y_obs_test)
 performance(pred_glmnet_test, "auc")@y.values[[1]]
 binomial_deviance(y_obs_test, yhat_glmnet_test)
 
+# 랜덤포레스트가 최종 승리자인 경우:
+y_obs_test <- as.numeric(as.character(test$class))
+yhat_rf_test <- predict(data_rf, newdata=test, type='prob')[,'1']
+pred_rf_test <- prediction(yhat_rf_test, y_obs_test)
+performance(pred_rf_test, "auc")@y.values[[1]]
+binomial_deviance(y_obs_test, yhat_rf_test)
+
+
 # 예측값들의 상관관계
 pairs(data.frame(y_obs=y_obs,
-                 yhat_lm=yhat_step,
+                 yhat_lm=yhat_lm,
                  yhat_glmnet=c(yhat_glmnet),
                  yhat_rf=yhat_rf,
                  yhat_gbm=yhat_gbm),
