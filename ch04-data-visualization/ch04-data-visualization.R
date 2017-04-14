@@ -80,7 +80,7 @@ df <- data.frame(gp = factor(rep(letters[1:3], each = 10)),
                  y = rnorm(30))
 glimpse(df)
 
-ds <- plyr::ddply(data=df, variable="gp", funciton=plyr::summarise, mean = mean(y), sd = sd(y))
+ds <- df %>% group_by(gp) %>% summarize(mean = mean(y), sd = sd(y))
 ds
 
 
