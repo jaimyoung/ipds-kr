@@ -100,7 +100,7 @@ ggplot() +
   geom_point(data = df, aes(x = gp, y = y)) +
   geom_point(data = ds, aes(x = gp, y = mean),
                         colour = 'red', size = 3) +
-  geom_errorbar(data = ds, aes(x = gp, y = mean,
+  geom_errorbar(data = ds, aes(x = gp,
                     ymin = mean - sd, ymax = mean + sd),
                     colour = 'red', width = 0.4)
 
