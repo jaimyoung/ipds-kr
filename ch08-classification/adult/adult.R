@@ -35,10 +35,10 @@ binomial_deviance <- function(y_obs, yhat){
 
 adult <- read.csv("adult.data", header = FALSE, strip.white = TRUE)
 names(adult) <- c('age', 'workclass', 'fnlwgt', 'education',
-                  'education-num', 'marital-status', 'occupation',
+                  'education_num', 'marital_status', 'occupation',
                   'relationship', 'race', 'sex',
-                  'capital-gain', 'capital-loss',
-                  'hours-per-week', 'native-country',
+                  'capital_gain', 'capital_loss',
+                  'hours_per_week', 'native_country',
                   'wage')
 
 
