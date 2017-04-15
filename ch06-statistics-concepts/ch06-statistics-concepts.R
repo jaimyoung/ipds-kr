@@ -1,3 +1,6 @@
+library(tidyverse)
+library(gridExtra)
+
 
 # 약제 1을 복용했을 때 수면시간의 증가 (단위는 시간이다)
 
@@ -159,6 +162,7 @@ t.test(y_star)$conf.int
 t.test(y_star)$conf.int
 
 
+library(tidyverse)
 set.seed(1606)
 B = 1e2
 conf_intervals <-

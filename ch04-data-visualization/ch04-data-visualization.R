@@ -1,3 +1,7 @@
+library(tidyverse)
+library(gridExtra)
+library(gapminder)
+
 # install.packages("gapminder")
 help(package = "gapminder")
 library(gapminder)

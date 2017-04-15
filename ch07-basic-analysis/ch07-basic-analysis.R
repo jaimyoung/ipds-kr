@@ -1,6 +1,6 @@
+library(tidyverse)
+library(gridExtra)
 
-library(ggplot2)
-library(dplyr)
 mpg <- tbl_df(mpg)
 mpg
 
