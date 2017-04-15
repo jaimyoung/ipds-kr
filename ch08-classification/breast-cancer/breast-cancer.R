@@ -31,8 +31,8 @@ panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...){
 
 
 
-library(dplyr)
-library(ggplot2)
+library(tidyverse)
+library(gridExtra)
 library(MASS)
 library(glmnet)
 library(randomForest)
@@ -41,7 +41,6 @@ library(rpart)
 library(boot)
 library(data.table)
 library(ROCR)
-library(gridExtra)
 
 data <- tbl_df(read.table("wdbc.data", strip.white = TRUE,
                           sep=",", header = FALSE))
@@ -65,10 +64,12 @@ glimpse(data)
 
 summary(data)
 
+png("../../plots/10-1.png", 5.5*1.2, 4*1.2, units='in', pointsize=9, res=600)
 pairs(data %>% dplyr::select(class, starts_with('mean_')) %>%
         sample_n(min(1000, nrow(data))),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
+dev.off()
 
 pairs(data %>% dplyr::select(class, starts_with('se_')) %>%
         sample_n(min(1000, nrow(data))),
@@ -93,6 +94,9 @@ p3 <- data %>% ggplot(aes(class, mean_radius)) +
 p4 <- data %>% ggplot(aes(mean_concave_points, mean_radius)) +
   geom_jitter(col='gray') + geom_smooth()
 grid.arrange(p1, p2, p3, p4, ncol=2)
+
+g <- arrangeGrob(p1, p2, p3, p4, ncol=2)
+ggsave("../../plots/10-2.png", g, width=5.5*1.2, height=4*1.2, units='in', dpi=600)
 
 
 # 트래인셋과 테스트셋의 구분
@@ -136,6 +140,10 @@ glimpse(x)
 data_cvfit <- cv.glmnet(x, y, family = "binomial")
 plot(data_cvfit)
 
+png("../../plots/10-3.png", 5.5, 4, units='in', pointsize=9, res=600)
+plot(data_cvfit)
+dev.off()
+
 coef(data_cvfit, s = c("lambda.1se"))
 coef(data_cvfit, s = c("lambda.min"))
 
@@ -157,10 +165,12 @@ data_tr
 printcp(data_tr)
 summary(data_tr)
 
+png("../../plots/10-4.png", 5.5, 4, units='in', pointsize=9, res=600)
 opar <- par(mfrow = c(1,1), xpd = NA)
 plot(data_tr)
 text(data_tr, use.n = TRUE)
 par(opar)
+dev.off()
 
 
 yhat_tr <- predict(data_tr, validation)
@@ -176,10 +186,12 @@ set.seed(1607)
 data_rf <- randomForest(class ~ ., training)
 data_rf
 
+png("../../plots/10-5.png", 5.5*1.5, 4*1.2, units='in', pointsize=9, res=600)
 opar <- par(mfrow=c(1,2))
 plot(data_rf)
 varImpPlot(data_rf)
 par(opar)
+dev.off()
 
 
 yhat_rf <- predict(data_rf, newdata=validation, type='prob')[,'1']
@@ -197,6 +209,10 @@ data_for_gbm <-
 data_gbm <- gbm(class ~ ., data=data_for_gbm, distribution="bernoulli",
               n.trees=50000, cv.folds=3, verbose=TRUE)
 (best_iter = gbm.perf(data_gbm, method="cv"))
+
+png("../../plots/10-6.png", 5.5, 4, units='in', pointsize=9, res=600)
+(best_iter = gbm.perf(data_gbm, method="cv"))
+dev.off()
 
 yhat_gbm <- predict(data_gbm, n.trees=best_iter, newdata=validation, type='response')
 pred_gbm <- prediction(yhat_gbm, y_obs)
@@ -224,13 +240,6 @@ performance(pred_glmnet_test, "auc")@y.values[[1]]
 binomial_deviance(y_obs_test, yhat_glmnet_test)
 
 # 예측값들의 상관관계
-pairs(data.frame(y_obs=y_obs,
-                 yhat_lm=yhat_step,
-                 yhat_glmnet=c(yhat_glmnet),
-                 yhat_rf=yhat_rf,
-                 yhat_gbm=yhat_gbm),
-      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
-      upper.panel = panel.cor)
 
 
 #-----------
@@ -240,6 +249,8 @@ perf_glmnet <- performance(pred_glmnet, measure="tpr", x.measure="fpr")
 perf_rf <- performance(pred_rf, measure="tpr", x.measure="fpr")
 perf_gbm <- performance(pred_gbm, measure="tpr", x.measure="fpr")
 
+
+png("../../plots/10-7.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(perf_lm, col='black', main="ROC Curve")
 plot(perf_glmnet, add=TRUE, col='blue')
 plot(perf_rf, add=TRUE, col='red')
@@ -248,8 +259,10 @@ abline(0,1)
 legend('bottomright', inset=.1,
     legend=c("GLM", "glmnet", "RF", "GBM"),
     col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
+dev.off()
 
 
+png("../../plots/10-8.png", 5.5, 4, units='in', pointsize=9, res=600)
 pairs(data.frame(y_obs=y_obs,
                  yhat_lm=yhat_lm,
                  yhat_glmnet=c(yhat_glmnet),
@@ -257,3 +270,4 @@ pairs(data.frame(y_obs=y_obs,
                  yhat_gbm=yhat_gbm),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
+dev.off()
