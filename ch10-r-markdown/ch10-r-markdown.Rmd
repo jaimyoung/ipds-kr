@@ -1,0 +1,18 @@
+---
+title: "R Markdown 예제"
+author: "권재명"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+R 마크다운을 사용하여 R 코드, 코드실행 결과 텍스트, 도표를 포함한 문서를 쉽게 작성할 수 있습니다.
+
+```{r cars, fig.width=4, fig.height=3, message=FALSE}
+library(ggplot2)
+qplot(speed, dist, data=cars) + 
+  geom_smooth()
+summary(cars)
+```
