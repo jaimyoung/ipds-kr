@@ -3,8 +3,10 @@
 install.packages(c("dplyr", "ggplot2", "ISLR", "MASS", "glmnet",
                    "randomForest", "gbm", "rpart", "boot"))
 
-library(dplyr)
-library(ggplot2)
+library(tidyverse)
+library(gridExtra)
+library(ROCR)
+
 library(ISLR)
 library(MASS)
 library(glmnet)
@@ -33,10 +35,10 @@ binomial_deviance <- function(y_obs, yhat){
 
 adult <- read.csv("adult.data", header = FALSE, strip.white = TRUE)
 names(adult) <- c('age', 'workclass', 'fnlwgt', 'education',
-                  'education-num', 'marital-status', 'occupation',
+                  'education_num', 'marital_status', 'occupation',
                   'relationship', 'race', 'sex',
-                  'capital-gain', 'capital-loss',
-                  'hours-per-week', 'native-country',
+                  'capital_gain', 'capital_loss',
+                  'hours_per_week', 'native_country',
                   'wage')
 
 
@@ -90,6 +92,7 @@ test <- adult[test_idx,]
 training %>%
   ggplot(aes(age, fill=wage)) +
   geom_density(alpha=.5)
+ggsave("../../plots/8-3.png", width=5.5, height=4, units='in', dpi=600)
 
 
 
@@ -99,12 +102,14 @@ training %>%
   geom_density(alpha=.5) +
   ylim(0, 0.1) +
   facet_grid(race ~ sex, scales = 'free_y')
+ggsave("../../plots/8-4.png", width=5.5, height=4, units='in', dpi=600)
 
 
 
 training %>%
-  ggplot(aes(`education-num`, fill=wage)) +
+  ggplot(aes(`education_num`, fill=wage)) +
   geom_bar()
+ggsave("../../plots/8-5.png", width=5.5, height=4, units='in', dpi=600)
 
 
 # 8.6. 로지스틱 회귀분석
@@ -134,6 +139,9 @@ p2 <- ggplot(data.frame(y_obs, yhat_lm),
   geom_density(alpha=.5)
 grid.arrange(p1, p2, ncol=2)
 
+g <- arrangeGrob(p1, p2, ncol=2)
+ggsave("../../plots/8-6.png", g, width=5.5*1.5, height=4, units='in', dpi=600)
+
 
 
 binomial_deviance(y_obs, yhat_lm)
@@ -145,6 +153,13 @@ plot(perf_lm, col='black', main="ROC Curve for GLM")
 abline(0,1)
 performance(pred_lm, "auc")@y.values[[1]]
 
+
+png("../../plots/8-7.png", 5.5, 4, units='in', pointsize=9, res=600)
+pred_lm <- prediction(yhat_lm, y_obs)
+perf_lm <- performance(pred_lm, measure = "tpr", x.measure = "fpr")
+plot(perf_lm, col='black', main="ROC Curve for GLM")
+abline(0,1)
+dev.off()
 
 
 # 9. 빅데이터 분류분석 II: 라쏘와 랜덤포레스트
@@ -159,6 +174,10 @@ ad_glmnet_fit <- glmnet(x, y)
 
 plot(ad_glmnet_fit)
 
+png("../../plots/9-1.png", 5.5, 4, units='in', pointsize=9, res=600)
+plot(ad_glmnet_fit)
+dev.off()
+
 ad_glmnet_fit
 
 coef(ad_glmnet_fit, s = c(.1713, .1295))
@@ -169,12 +188,16 @@ ad_cvfit <- cv.glmnet(x, y, family = "binomial")
 
 plot(ad_cvfit)
 
+png("../../plots/9-2.png", 5.5, 4, units='in', pointsize=9, res=600)
+plot(ad_cvfit)
+dev.off()
+
 log(ad_cvfit$lambda.min)
 log(ad_cvfit$lambda.1se)
 
 coef(ad_cvfit, s=ad_cvfit$lambda.1se)
 coef(ad_cvfit, s="lambda.1se")
- 
+
 length(which(coef(ad_cvfit, s="lambda.min")>0))
 length(which(coef(ad_cvfit, s="lambda.1se")>0))
 
@@ -186,6 +209,7 @@ cv1 <- cv.glmnet(x, y, foldid=foldid, alpha=1, family='binomial')
 cv.5 <- cv.glmnet(x, y, foldid=foldid, alpha=.5, family='binomial')
 cv0 <- cv.glmnet(x, y, foldid=foldid, alpha=0, family='binomial')
 
+png("../../plots/9-3.png", 5.5, 4, units='in', pointsize=7, res=600)
 par(mfrow=c(2,2))
 plot(cv1, main="Alpha=1.0")
 plot(cv.5, main="Alpha=0.5")
@@ -196,6 +220,7 @@ points(log(cv.5$lambda), cv.5$cvm, pch=19, col="grey")
 points(log(cv0$lambda), cv0$cvm, pch=19, col="blue")
 legend("topleft", legend=c("alpha= 1", "alpha= .5", "alpha 0"),
        pch=19, col=c("red","grey","blue"))
+dev.off()
 
 
 predict(ad_cvfit, s="lambda.1se", newx = x[1:5,], type='response')
@@ -204,16 +229,20 @@ y_obs <- ifelse(validation$wage == ">50K", 1, 0)
 yhat_glmnet <- predict(ad_cvfit, s="lambda.1se", newx=xx[validate_idx,], type='response')
 yhat_glmnet <- yhat_glmnet[,1] # change to a vectro from [n*1] matrix
 binomial_deviance(y_obs, yhat_glmnet)
-[1] 4257.118
+# [1] 4257.118
 pred_glmnet <- prediction(yhat_glmnet, y_obs)
 perf_glmnet <- performance(pred_glmnet, measure="tpr", x.measure="fpr")
+
+performance(pred_glmnet, "auc")@y.values[[1]]
+
+png("../../plots/9-4.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(perf_lm, col='black', main="ROC Curve")
 plot(perf_glmnet, col='blue', add=TRUE)
-abline(0,1)
+abline(0,1, col='gray')
 legend('bottomright', inset=.1,
-    legend=c("GLM", "glmnet"),
-    col=c('black', 'blue'), lty=1, lwd=2)
-performance(pred_glmnet, "auc")@y.values[[1]]
+       legend=c("GLM", "glmnet"),
+       col=c('black', 'blue'), lty=1, lwd=2)
+dev.off()
 
 
 # 9.2. 나무모형
@@ -224,13 +253,15 @@ cvr_tr
 
 printcp(cvr_tr)
 summary(cvr_tr)
- 
 
 
+
+png("../../plots/9-6.png", 5.5, 4, units='in', pointsize=9, res=600)
 opar <- par(mfrow = c(1,1), xpd = NA)
 plot(cvr_tr)
 text(cvr_tr, use.n = TRUE)
 par(opar)
+dev.off()
 
 
 yhat_tr <- predict(cvr_tr, validation)
@@ -238,28 +269,34 @@ yhat_tr <- yhat_tr[,">50K"]
 binomial_deviance(y_obs, yhat_tr)
 pred_tr <- prediction(yhat_tr, y_obs)
 perf_tr <- performance(pred_tr, measure = "tpr", x.measure = "fpr")
+performance(pred_tr, "auc")@y.values[[1]]
+
+png("../../plots/9-7.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(perf_lm, col='black', main="ROC Curve")
 plot(perf_tr, col='blue', add=TRUE)
-abline(0,1)
+abline(0,1, col='gray')
 legend('bottomright', inset=.1,
     legend = c("GLM", "Tree"),
     col=c('black', 'blue'), lty=1, lwd=2)
-performance(pred_tr, "auc")@y.values[[1]]
+dev.off()
 
 
-# 9.3. 랜덤 포레스트
+# 9.3. 랜덤 포레스트 -----------
 
 set.seed(1607)
 ad_rf <- randomForest(wage ~ ., training)
 ad_rf
 
+png("../../plots/9-8.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(ad_rf)
+dev.off()
 
 tmp <- importance(ad_rf)
 head(round(tmp[order(-tmp[,1]), 1, drop=FALSE], 2), n=10)
 
+png("../../plots/9-9.png", 5.5, 4, units='in', pointsize=9, res=600)
 varImpPlot(ad_rf)
-
+dev.off()
 
 predict(ad_rf, newdata = adult[1:5,])
 
@@ -270,14 +307,17 @@ yhat_rf <- predict(ad_rf, newdata=validation, type='prob')[,'>50K']
 binomial_deviance(y_obs, yhat_rf)
 pred_rf <- prediction(yhat_rf, y_obs)
 perf_rf <- performance(pred_rf, measure="tpr", x.measure="fpr")
+performance(pred_tr, "auc")@y.values[[1]]
+
+png("../../plots/9-10.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(perf_lm, col='black', main="ROC Curve")
 plot(perf_glmnet, add=TRUE, col='blue')
 plot(perf_rf, add=TRUE, col='red')
-abline(0,1)
+abline(0,1, col='gray')
 legend('bottomright', inset=.1,
-    legend = c("GLM", "glmnet", "RF"),
-    col=c('black', 'blue', 'red'), lty=1, lwd=2)
-performance(pred_tr, "auc")@y.values[[1]]
+       legend = c("GLM", "glmnet", "RF"),
+       col=c('black', 'blue', 'red'), lty=1, lwd=2)
+dev.off()
 
 
 # 9.3.5. 예측확률값 자체의 비교
@@ -290,10 +330,11 @@ p2 <- reshape2::melt(data.frame(yhat_glmnet, yhat_rf)) %>%
   ggplot(aes(value, fill=variable)) +
   geom_density(alpha=.5)
 grid.arrange(p1, p2, ncol=2)
+g <- arrangeGrob(p1, p2, ncol=2)
+ggsave("../../plots/9-11.png", g, width=5.5*1.2, height=4*.8, units='in', dpi=600)
 
 
-
-# 9.4. 부스팅
+# 9.4. 부스팅 ----------
 
 set.seed(1607)
 adult_gbm <- training %>% mutate(wage=ifelse(wage == ">50K", 1, 0))
@@ -306,8 +347,9 @@ ad_gbm2 <- gbm.more(ad_gbm, n.new.trees=10000)
 (best_iter <- gbm.perf(ad_gbm2, method="cv"))
 
 
-
-(best_iter <- gbm.perf(ad_gbm, method="cv"))
+png("../../plots/9-12.png", 5.5, 4, units='in', pointsize=9, res=600)
+(best_iter <- gbm.perf(ad_gbm2, method="cv"))
+dev.off()
 
 
 predict(ad_gbm, n.trees=best_iter, newdata=adult_gbm[1:5,], type='response')
@@ -316,19 +358,23 @@ yhat_gbm <- predict(ad_gbm, n.trees=best_iter, newdata=validation, type='respons
 binomial_deviance(y_obs, yhat_gbm)
 pred_gbm <- prediction(yhat_gbm, y_obs)
 perf_gbm <- performance(pred_gbm, measure="tpr", x.measure="fpr")
+performance(pred_gbm, "auc")@y.values[[1]]
+
+
+png("../../plots/9-13.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(perf_lm, col='black', main="ROC Curve")
 plot(perf_glmnet, add=TRUE, col='blue')
 plot(perf_rf, add=TRUE, col='red')
 plot(perf_gbm, add=TRUE, col='cyan')
-abline(0,1)
+abline(0,1, col='gray')
 legend('bottomright', inset=.1,
     legend=c("GLM", "glmnet", "RF", "GBM"),
     col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
-performance(pred_gbm, "auc")@y.values[[1]]
+dev.off()
 
 
 
-# 9.5. 모형 비교, 최종 모형 선택, 일반화 성능 평가
+# 9.5. 모형 비교, 최종 모형 선택, 일반화 성능 평가 ----
 
 
 # 9.5.2. 모형의 예측확률값의 분포 비교
@@ -342,7 +388,8 @@ panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...){
   if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
   text(0.5, 0.5, txt, cex = cex.cor * r)
 }
- 
+
+png("../../plots/9-14.png", 5.5, 4, units='in', pointsize=9, res=600)
 pairs(data.frame(y_obs=y_obs,
                 yhat_lm=yhat_lm,
                 yhat_glmnet=c(yhat_glmnet),
@@ -350,7 +397,8 @@ pairs(data.frame(y_obs=y_obs,
                 yhat_gbm=yhat_gbm),
     lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
     upper.panel = panel.cor)
- 
+dev.off()
+
 
 # 9.5.3. 테스트셋을 이용한 일반화능력 계산
 y_obs_test <- ifelse(test$wage == ">50K", 1, 0)
@@ -362,3 +410,26 @@ performance(pred_gbm_test, "auc")@y.values[[1]]
 # 9.6.5. 캐럿 (caret) 패키지
 install.packages("caret", dependencies = c("Depends", "Suggests"))
 
+
+
+# This is for the earlier ROC curve example. ---
+{
+  png("../../plots/8-1.png", 5.5*1.2, 4*.8, units='in', pointsize=9, res=600)
+  opar <- par(mfrow=c(1,2))
+  plot(perf_lm, col='black', main="ROC Curve")
+  plot(perf_tr, col='blue', add=TRUE)
+  abline(0,1, col='gray')
+  legend('bottomright', inset=.1,
+      legend = c("GLM", "Tree"),
+      col=c('black', 'blue'), lty=1, lwd=2)
+  plot(perf_lm, col='black', main="ROC Curve")
+  plot(perf_glmnet, add=TRUE, col='blue')
+  plot(perf_rf, add=TRUE, col='red')
+  plot(perf_gbm, add=TRUE, col='cyan')
+  abline(0,1, col='gray')
+  legend('bottomright', inset=.1,
+      legend=c("GLM", "glmnet", "RF", "GBM"),
+      col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
+  par(opar)
+  dev.off()
+}

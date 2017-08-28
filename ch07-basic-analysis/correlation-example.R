@@ -76,3 +76,16 @@ output <- function() {
    Others(800)
    dev.off() # remove first and last line for no svg exporting
 }
+
+output() # Produce
+
+{
+  library(mvtnorm)
+  png('../plots/7-5.png', width = 7, height = 3.2, units = 'in',
+      res=600, pointsize = 12) # remove first and last line for no svg exporting
+  par(mfrow = c(3, 7), oma = c(0,0,0,0), mar=c(2,2,2,0))
+  MvNormal(800, c(1.0, 0.8, 0.4, 0.0, -0.4, -0.8, -1.0));
+  RotNormal(200, c(0, pi/12, pi/6, pi/4, pi/2-pi/6, pi/2-pi/12, pi/2));
+  Others(800)
+  dev.off() # remove first and last line for no svg exporting
+}

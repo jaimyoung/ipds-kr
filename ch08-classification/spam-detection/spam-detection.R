@@ -64,17 +64,22 @@ glimpse(data)
 
 summary(data)
 
+png("../../plots/11-1.png", 5.5*1.2, 4*1.2, units='in', pointsize=10, res=600)
 set.seed(1610)
 pairs(data %>% dplyr::select(1:10, 58) %>%
         sample_n(min(1000, nrow(data))),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
+dev.off()
 
+
+png("../../plots/11-2.png", 5.5*1.2, 4*1.2, units='in', pointsize=10, res=600)
 set.seed(1610)
 pairs(data %>% dplyr::select(48:57, 58) %>%
         sample_n(min(1000, nrow(data))),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
+dev.off()
 
 #
 tmp <- as.data.frame(cor(data[,-58], as.numeric(data$class)))
@@ -84,6 +89,7 @@ tmp %>%
   ggplot(aes(reorder(var, cor), cor)) +
   geom_point() +
   coord_flip()
+ggsave("../../plots/11-3.png", width=5.5*1.8, height=4*1.8, units='in', dpi=400)
 
 
 library(ggplot2)
@@ -102,6 +108,9 @@ p4 <- data %>% ggplot(aes(class, capital_run_length_longest)) +
   geom_boxplot(alpha=.5) +
   scale_y_log10()
 grid.arrange(p1, p2, p3, p4, ncol=2)
+
+g <- arrangeGrob(p1, p2, p3, p4, ncol=2)
+ggsave("../../plots/11-4.png", g, width=5.5, height=4, units='in', dpi=600)
 
 ?'`'
 
@@ -152,6 +161,10 @@ glimpse(x)
 data_cvfit <- cv.glmnet(x, y, family = "binomial")
 plot(data_cvfit)
 
+png("../../plots/11-5.png", 5.5, 4, units='in', pointsize=9, res=600)
+plot(data_cvfit)
+dev.off()
+
 coef(data_cvfit, s = c("lambda.1se"))
 coef(data_cvfit, s = c("lambda.min"))
 
@@ -173,10 +186,12 @@ data_tr
 printcp(data_tr)
 summary(data_tr)
 
+png("../../plots/11-6.png", 5.5, 4, units='in', pointsize=9, res=600)
 opar <- par(mfrow = c(1,1), xpd = NA)
 plot(data_tr)
 text(data_tr, use.n = TRUE)
 par(opar)
+dev.off()
 
 
 yhat_tr <- predict(data_tr, validation)
@@ -192,10 +207,12 @@ set.seed(1607)
 data_rf <- randomForest(class ~ ., data=training)
 data_rf
 
+png("../../plots/11-7.png", 5.5*1.5, 4*1.2, units='in', pointsize=8, res=600)
 opar <- par(mfrow=c(1,2))
 plot(data_rf)
 varImpPlot(data_rf)
 par(opar)
+dev.off()
 
 
 yhat_rf <- predict(data_rf, newdata=validation, type='prob')[,'1']
@@ -212,7 +229,10 @@ data_for_gbm <-
   mutate(class=as.numeric(as.character(class)))
 data_gbm <- gbm(class ~ ., data=data_for_gbm, distribution="bernoulli",
               n.trees=100000, cv.folds=3, verbose=TRUE)
+
+png("../../plots/11-8.png", 5.5, 4, units='in', pointsize=9, res=600)
 (best_iter = gbm.perf(data_gbm, method="cv"))
+dev.off()
 
 yhat_gbm <- predict(data_gbm, n.trees=best_iter, newdata=validation, type='response')
 pred_gbm <- prediction(yhat_gbm, y_obs)
@@ -264,6 +284,7 @@ perf_glmnet <- performance(pred_glmnet, measure="tpr", x.measure="fpr")
 perf_rf <- performance(pred_rf, measure="tpr", x.measure="fpr")
 perf_gbm <- performance(pred_gbm, measure="tpr", x.measure="fpr")
 
+png("../../plots/11-9.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(perf_lm, col='black', main="ROC Curve")
 plot(perf_glmnet, add=TRUE, col='blue')
 plot(perf_rf, add=TRUE, col='red')
@@ -272,8 +293,10 @@ abline(0,1)
 legend('bottomright', inset=.1,
     legend=c("GLM", "glmnet", "RF", "GBM"),
     col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
+dev.off()
 
 
+png("../../plots/11-10.png", 5.5, 4, units='in', pointsize=9, res=600)
 pairs(data.frame(y_obs=y_obs,
                  yhat_lm=yhat_lm,
                  yhat_glmnet=c(yhat_glmnet),
@@ -281,3 +304,4 @@ pairs(data.frame(y_obs=y_obs,
                  yhat_gbm=yhat_gbm),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
+dev.off()

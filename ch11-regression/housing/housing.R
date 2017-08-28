@@ -46,9 +46,11 @@ summary(data)
 
 pairs(data %>% sample_n(min(1000, nrow(data))))
 
+png("../../plots/13-1.png", 5.5*1.2, 4*1.2, units='in', pointsize=9, res=600)
 pairs(data %>% sample_n(min(1000, nrow(data))),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
+dev.off()
 
 
 # 트래인셋과 테스트셋의 구분
@@ -106,9 +108,18 @@ data_cvfit <- cv.glmnet(x, y)
 plot(data_cvfit)
 
 
+png("../../plots/13-2.png", 5.5, 4, units='in', pointsize=9, res=600)
+plot(data_cvfit)
+dev.off()
+
 coef(data_cvfit, s = c("lambda.1se"))
 coef(data_cvfit, s = c("lambda.min"))
 
+(tmp <- coef(data_cvfit, s = c("lambda.1se")))
+tmp <- tmp[,1]
+length(tmp[abs(tmp)>0])
+(tmp <- coef(data_cvfit, s = c("lambda.min")))
+length(tmp[abs(tmp)>0])
 
 predict.cv.glmnet(data_cvfit, s="lambda.min", newx = x[1:5,])
 
@@ -124,10 +135,12 @@ data_tr
 printcp(data_tr)
 summary(data_tr)
 
+png("../../plots/13-3.png", 5.5, 4, units='in', pointsize=9, res=600)
 opar <- par(mfrow = c(1,1), xpd = NA)
 plot(data_tr)
 text(data_tr, use.n = TRUE)
 par(opar)
+dev.off()
 
 
 yhat_tr <- predict(data_tr, validation)
@@ -139,9 +152,12 @@ set.seed(1607)
 data_rf <- randomForest(medv ~ ., training)
 data_rf
 
+png("../../plots/13-4.png", 5.5, 4*.8, units='in', pointsize=9, res=600)
+par(mfrow=c(1,2))
 plot(data_rf)
-
 varImpPlot(data_rf)
+dev.off()
+
 
 yhat_rf <- predict(data_rf, newdata=validation)
 rmse(y_obs, yhat_rf)
@@ -151,7 +167,10 @@ rmse(y_obs, yhat_rf)
 set.seed(1607)
 data_gbm <- gbm(medv ~ ., data=training,
               n.trees=40000, cv.folds=3, verbose = TRUE)
+
+png("../../plots/13-5.png", 5.5, 4, units='in', pointsize=9, res=600)
 (best_iter = gbm.perf(data_gbm, method="cv"))
+dev.off()
 
 yhat_gbm <- predict(data_gbm, n.trees=best_iter, newdata=validation)
 rmse(y_obs, yhat_gbm)
@@ -168,13 +187,16 @@ rmse(test$medv, predict(data_rf, newdata = test))
 
 
 # 회귀분석의 오차의 시각화
+png("../../plots/13-6.png", 5.5, 4, units='in', pointsize=9, res=600)
 boxplot(list(lm = y_obs-yhat_step,
              glmnet = y_obs-yhat_glmnet,
              rf = y_obs-yhat_rf,
              gbm = y_obs-yhat_gbm), ylab="Error in Validation Set")
 abline(h=0, lty=2, col='blue')
+dev.off()
 
 
+png("../../plots/13-7.png", 5.5, 4, units='in', pointsize=9, res=600)
 pairs(data.frame(y_obs=y_obs,
                  yhat_lm=yhat_step,
                  yhat_glmnet=c(yhat_glmnet),
@@ -182,4 +204,4 @@ pairs(data.frame(y_obs=y_obs,
                  yhat_gbm=yhat_gbm),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
-
+dev.off()

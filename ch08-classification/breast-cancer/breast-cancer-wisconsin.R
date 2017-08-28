@@ -1,18 +1,23 @@
-# 빅데이터 회귀분석. 와인 품질 예측
+# 빅데이터 분별분석. 암 예측.
 #
-if (!file.exists("winequality-white.csv")){
-  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv > winequality-red.csv')
-  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv > winequality-white.csv')
-  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality.names > winequality.names')
+if (!file.exists("breast-cancer-wisconsin.data")){
+  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data > breast-cancer-wisconsin.data')
+  system('curl http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.names > breast-cancer-wisconsin.names')
 }
 
 rmse <- function(yi, yhat_i){
   sqrt(mean((yi - yhat_i)^2))
 }
 
-mae <- function(yi, yhat_i){
-  mean(abs(yi - yhat_i))
+binomial_deviance <- function(y_obs, yhat){
+  epsilon = 0.0001
+  yhat = ifelse(yhat < epsilon, epsilon, yhat)
+  yhat = ifelse(yhat > 1-epsilon, 1-epsilon, yhat)
+  a = ifelse(y_obs==0, 0, y_obs * log(y_obs/yhat))
+  b = ifelse(y_obs==1, 0, (1-y_obs) * log((1-y_obs)/(1-yhat)))
+  return(2*sum(a + b))
 }
+
 
 panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...){
   usr <- par("usr"); on.exit(par(usr))
@@ -38,32 +43,43 @@ library(data.table)
 library(ROCR)
 library(gridExtra)
 
-data <- tbl_df(read.table("winequality-white.csv", strip.white = TRUE,
-                          sep=";", header = TRUE))
+data <- tbl_df(read.table("breast-cancer-wisconsin.data", strip.white = TRUE,
+                          sep=",", header = FALSE, na.strings = '?'))
+names(data) <- c('id', 'thickness', 'unif_cell_size', 'unif_cell_shape',
+                 'marginal_adhesion', 'cell_size', 'bare_nuclei',
+                 'bland_cromatin', 'normal_nucleoli', 'mitoses', 'class')
+
 glimpse(data)
+
+# 1. 결측치 처리
+data$bare_nuclei[is.na(data$bare_nuclei)] <- median(data$bare_nuclei, na.rm = TRUE)
+# 2. id 변수 제거
+data <- data %>% dplyr::select(-id)
+# 3. class 변수를 인자 변수로 변환
+data$class <- factor(ifelse(data$class == 2, 0, 1))
+
+glimpse(data)
+
 
 summary(data)
 
-pairs(data %>% sample_n(min(1000, nrow(data))))
-
-png("../../plots/14-1.png", 5.5*1.2, 4*1.2, units='in', pointsize=10, res=600)
-set.seed(1704)
 pairs(data %>% sample_n(min(1000, nrow(data))),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
-dev.off()
-
 
 library(ggplot2)
 library(dplyr)
 library(gridExtra)
-p1 <- data %>% ggplot(aes(quality)) + geom_bar()
-p2 <- data %>% ggplot(aes(factor(quality), alcohol)) + geom_boxplot()
-p3 <- data %>% ggplot(aes(factor(quality), density)) + geom_boxplot()
-p4 <- data %>% ggplot(aes(alcohol, density)) + geom_point(alpha=.1) + geom_smooth()
+p1 <- data %>% ggplot(aes(class)) + geom_bar()
+p2 <- data %>% ggplot(aes(class, unif_cell_size)) +
+  geom_jitter(col='gray') +
+  geom_boxplot(alpha=.5)
+p3 <- data %>% ggplot(aes(class, bare_nuclei)) +
+  geom_jitter(col='gray') +
+  geom_boxplot(alpha=.5)
+p4 <- data %>% ggplot(aes(unif_cell_size, bare_nuclei)) +
+  geom_jitter(col='gray') + geom_smooth()
 grid.arrange(p1, p2, p3, p4, ncol=2)
-g <- arrangeGrob(p1, p2, p3, p4, ncol=2)
-ggsave("../../plots/14-2.png", g, width=5.5, height=4, units='in', dpi=600)
 
 
 # 트래인셋과 테스트셋의 구분
@@ -79,14 +95,15 @@ validation <- data[validate_idx,]
 test <- data[test_idx,]
 
 
-# 선형회귀모형 (linear regression model)
-data_lm_full <- lm(quality ~ ., data=training)
+#-----------------
+# 로지스틱 회귀모형
+data_lm_full <- glm(class ~ ., data=training, family=binomial)
 summary(data_lm_full)
 
 predict(data_lm_full, newdata = data[1:5,])
 
 # 선형회귀모형에서 변수선택
-data_lm_full_2 <- lm(quality ~ .^2, data=training)
+data_lm_full_2 <- lm(class ~ .^2, data=training)
 summary(data_lm_full_2)
 
 length(coef(data_lm_full_2))
@@ -102,7 +119,7 @@ length(coef(data_step))
 
 
 # 모형평가
-y_obs <- validation$quality
+y_obs <- validation$class
 yhat_lm <- predict(data_lm_full, newdata=validation)
 yhat_lm_2 <- predict(data_lm_full_2, newdata=validation)
 yhat_step <- predict(data_step, newdata=validation)
@@ -110,78 +127,103 @@ rmse(y_obs, yhat_lm)
 rmse(y_obs, yhat_lm_2)
 rmse(y_obs, yhat_step)
 
+library(ROCR)
+pred_lm <- prediction(yhat_lm, y_obs)
+performance(pred_lm, "auc")@y.values[[1]]
+binomial_deviance(y_obs, yhat_glmnet)
 
+#-----------------
 # 라쏘 모형 적합
-xx <- model.matrix(quality ~ .^2-1, data)
-# xx <- model.matrix(quality ~ .-1, data)
+# xx <- model.matrix(class ~ .^2-1, data)
+xx <- model.matrix(class ~ .-1, data)
 x <- xx[training_idx, ]
-y <- training$quality
+y <- as.numeric(training$class)
 glimpse(x)
 
-data_cvfit <- cv.glmnet(x, y)
-
-png("../../plots/14-3.png", 5.5, 4, units='in', pointsize=10, res=600)
+data_cvfit <- cv.glmnet(x, y, family = "binomial")
 plot(data_cvfit)
-dev.off()
 
 
 coef(data_cvfit, s = c("lambda.1se"))
 coef(data_cvfit, s = c("lambda.min"))
 
-(tmp <- coef(data_cvfit, s = c("lambda.1se")))
-length(tmp[abs(tmp)>0])
-(tmp <- coef(data_cvfit, s = c("lambda.min")))
-length(tmp[abs(tmp)>0])
 
 predict.cv.glmnet(data_cvfit, s="lambda.min", newx = x[1:5,])
 
-y_obs <- validation$quality
+
+
+
+predict(ad_cvfit, s="lambda.1se", newx = x[1:5,], type='response')
+
+y_obs <- as.numeric(validation$class)
+yhat_glmnet <- predict(ad_cvfit, s="lambda.1se", newx=xx[validate_idx,], type='response')
+yhat_glmnet <- yhat_glmnet[,1] # change to a vector from [n*1] matrix
+binomial_deviance(y_obs, yhat_glmnet)
+
+
+pred_glmnet <- prediction(yhat_glmnet, y_obs)
+performance(pred_glmnet, "auc")@y.values[[1]]
+
+
+perf_lm <- performance(pred_lm, measure = "tpr", x.measure = "fpr")
+perf_glmnet <- performance(pred_glmnet, measure="tpr", x.measure="fpr")
+plot(perf_lm, col='black', main="ROC Curve for GLM")
+abline(0,1)
+
+
+plot(perf_lm, col='black', main="ROC Curve")
+plot(perf_glmnet, col='blue', add=TRUE)
+abline(0,1)
+legend('bottomright', inset=.1,
+    legend=c("GLM", "glmnet"),
+    col=c('black', 'blue'), lty=1, lwd=2)
+
+
+
 yhat_glmnet <- predict(data_cvfit, s="lambda.min", newx=xx[validate_idx,])
 yhat_glmnet <- yhat_glmnet[,1] # change to a vector from [n*1] matrix
 rmse(y_obs, yhat_glmnet)
 
+#-----------------
 # 나무모형
-data_tr <- rpart(quality ~ ., data = training)
+data_tr <- rpart(class ~ ., data = training)
 data_tr
 
 printcp(data_tr)
 summary(data_tr)
 
-png("../../plots/14-4.png", 5.5, 4, units='in', pointsize=10, res=600)
 opar <- par(mfrow = c(1,1), xpd = NA)
 plot(data_tr)
 text(data_tr, use.n = TRUE)
 par(opar)
-dev.off()
+
 
 yhat_tr <- predict(data_tr, validation)
 rmse(y_obs, yhat_tr)
 
 
+#-----------------
 # 랜덤포레스트
 set.seed(1607)
-data_rf <- randomForest(quality ~ ., training)
+data_rf <- randomForest(class ~ ., training)
 data_rf
 
-png("../../plots/14-5.png", 5.5*1.5, 4, units='in', pointsize=9, res=600)
 opar <- par(mfrow=c(1,2))
 plot(data_rf)
 varImpPlot(data_rf)
 par(opar)
-dev.off()
+
 
 yhat_rf <- predict(data_rf, newdata=validation)
 rmse(y_obs, yhat_rf)
 
 
+#-----------------
 # 부스팅
 set.seed(1607)
-data_gbm <- gbm(quality ~ ., data=training,
+data_gbm <- gbm(class ~ ., data=training,
                 n.trees=40000, cv.folds=3, verbose = TRUE)
-
-png("../../plots/14-6.png", 5.5, 4, units='in', pointsize=9, res=600)
 (best_iter = gbm.perf(data_gbm, method="cv"))
-dev.off()
 
 yhat_gbm <- predict(data_gbm, n.trees=best_iter, newdata=validation)
 rmse(y_obs, yhat_gbm)
@@ -194,7 +236,7 @@ data.frame(lm = rmse(y_obs, yhat_step),
            gbm = rmse(y_obs, yhat_gbm)) %>%
   reshape2::melt(value.name = 'rmse', variable.name = 'method')
 
-rmse(test$quality, predict(data_rf, newdata = test))
+rmse(test$class, predict(data_rf, newdata = test))
 
 
 # 회귀분석의 오차의 시각화
@@ -205,7 +247,6 @@ boxplot(list(lm = y_obs-yhat_step,
 abline(h=0, lty=2, col='blue')
 
 
-png("../../plots/14-7.png", 5.5, 4, units='in', pointsize=9, res=600)
 pairs(data.frame(y_obs=y_obs,
                  yhat_lm=yhat_step,
                  yhat_glmnet=c(yhat_glmnet),
@@ -213,4 +254,4 @@ pairs(data.frame(y_obs=y_obs,
                  yhat_gbm=yhat_gbm),
       lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
       upper.panel = panel.cor)
-dev.off()
+

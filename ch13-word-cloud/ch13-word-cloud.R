@@ -31,3 +31,8 @@ wordcloud(data_corpus, max.words=100, random.order=FALSE,
 
 data$Question[1]
 as.character(data_corpus[[1]])
+
+png("../plots/15-1.png", 5.5, 4, units='in', pointsize=9, res=600)
+wordcloud(data_corpus, max.words=100, random.order=FALSE,
+          colors=brewer.pal(8, "Dark2"))
+dev.off()
