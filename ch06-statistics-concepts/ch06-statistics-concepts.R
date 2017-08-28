@@ -193,6 +193,7 @@ ggsave("../plots/6-6.png", width=5.5, height=4, units='in', dpi=600)
 
 # 6.10.2. 중심극한정리
 
+hist(c(0, 1), nclass=100, prob=TRUE, main='Individual sleep time increase')
 set.seed(1606)
 B <- 1e4
 n <- 10
@@ -200,7 +201,7 @@ xbars_star= rep(NA, B)
 for(b in 1:B){
   xbars_star[b] <- mean(sample(c(0,1), size=n, replace=TRUE))
 }
-hist(xbars_star, nclass=100)
+hist(xbars_star, nclass=100, main='Sample mean of 10 obs')
 
 png("../plots/6-8.png", 5.5, 4*.8, units='in', pointsize=9, res=600)
 opar = par(mfrow=c(1,2))

@@ -107,6 +107,7 @@ glimpse(x)
 data_cvfit <- cv.glmnet(x, y)
 plot(data_cvfit)
 
+
 png("../../plots/13-2.png", 5.5, 4, units='in', pointsize=9, res=600)
 plot(data_cvfit)
 dev.off()
@@ -114,6 +115,11 @@ dev.off()
 coef(data_cvfit, s = c("lambda.1se"))
 coef(data_cvfit, s = c("lambda.min"))
 
+(tmp <- coef(data_cvfit, s = c("lambda.1se")))
+tmp <- tmp[,1]
+length(tmp[abs(tmp)>0])
+(tmp <- coef(data_cvfit, s = c("lambda.min")))
+length(tmp[abs(tmp)>0])
 
 predict.cv.glmnet(data_cvfit, s="lambda.min", newx = x[1:5,])
 
