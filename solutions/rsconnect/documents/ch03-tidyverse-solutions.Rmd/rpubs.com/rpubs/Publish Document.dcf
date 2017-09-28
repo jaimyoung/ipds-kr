@@ -1,0 +1,10 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/312900/0fd3d01887534faf96bda70d88336661
+bundleId: https://api.rpubs.com/api/v1/document/312900/0fd3d01887534faf96bda70d88336661
+url: http://rpubs.com/dataninja/312900
+when: 1506582161.7343

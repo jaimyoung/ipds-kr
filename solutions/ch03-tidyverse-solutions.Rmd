@@ -1,5 +1,5 @@
 ---
-title: "ch03-tidyverse-solutions"
+title: "<따라 하며 배우는 데이터 과학> 3장 연습문제 해답"
 author: "권재명"
 date: "9/27/2017"
 output:
@@ -7,6 +7,8 @@ output:
     toc: true
     toc_depth: 2
 ---
+저자 책 웹페이지: <https://dataninja.me/ipds-kr/>
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
