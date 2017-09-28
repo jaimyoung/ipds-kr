@@ -9,3 +9,6 @@ plots/
 *.names
 *.csv
 *.zip
+
+**/html/
+**/*_files/
