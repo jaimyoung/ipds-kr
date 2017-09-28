@@ -1,0 +1,260 @@
+---
+title: "<따라 하며 배우는 데이터 과학> 4장 연습문제 해답"
+author: "권재명"
+date: "9/27/2017"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+저자 책 웹페이지: <https://dataninja.me/ipds-kr/>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+
+일단은 필수패키지인 `tidyverse`를 로드하자.
+(로딩 메시지를 감추기 위해 `suppressMessages()` 명령을 사용.)
+```{r}
+# install.packages("tidyverse")
+suppressMessages(library(tidyverse))
+```
+
+# 1. (IMDB 자료 시각화)
+캐글 웹사이트에서 다음 IMDB(Internet Movie Database) 영화 정보 데이터를 다운로드하도록 하자
+(<https://goo.gl/R08lpm> 혹은 <https://www.kaggle.com/deepmatrix/imdb-5000-movie-dataset>, 무료 캐글 계정이 필요하다).
+
+데이터에 대해서는
+3장 연습문제 해답을 참조하자. <http://rpubs.com/dataninja/ipds-kr-solutions-ch03>
+
+데이터 `zip` 파일을 다운로드한 후, R로 자료를 읽어들이자:
+```{r}
+df2 <- read_csv("imdb-5000-movie-dataset.zip", guess_max = 1e6)
+```
+
+## a. 이 데이터는 어떤 변수로 이루어져 있는가?
+
+```{r}
+df2 %>% glimpse()
+```
+
+## b. 시각화를 통해 다음 질문에 답해보자
+(~~분석 예는 https://goo.gl/pYPzvi 에서 찾을 수 있다~~
+아쉽게도 원링크 <https://www.kaggle.com/adhok93/d/deepmatrix/imdb-5000-movie-dataset/eda-with-plotly>
+는 삭제되었습니다)
+
+
+### i. 연도별 리뷰받은 영화의 편수는?
+
+```{r}
+df2 %>%
+  group_by(title_year) %>%
+  summarize(n_movies=n()) %>% 
+  ggplot(aes(title_year, n_movies)) + geom_point() + geom_line()
+```
+
+### ii. 연도별 리뷰평점의 변화는?
+```{r}
+df2 %>%
+  group_by(title_year) %>%
+  summarize(avg_imdb_score = mean(imdb_score)) %>%
+  ggplot(aes(title_year, avg_imdb_score)) + geom_point() + geom_line()
+```
+
+평균 점수는 점점 낮아지고 있음을 볼 수 있다.
+
+(고급 분석: 이러한 평균 점수의 하락 추세의 원인은 무엇일까?)
+
+
+### iii. 영상물 등급(content_rating)에 따라서 리뷰평점의 분포에 차이가 있는가?
+
+우선 등급의 분포부터 살펴보자:
+```{r}
+df2 %>%
+  ggplot(aes(content_rating)) + geom_bar()
+```
+
+이로부터 대부분의 영화들의 
+영상물 등급은 다음 넷 중 하나임을 알 수 있다:
+G, PG, PG-13, R. 
+아래 분석은 이 네 등급의 영화에 집중하도록 하자.
+
+각 등급에 따른 리뷰평점 분포의 병렬상자그림을 그려보면:
+```{r}
+df2 %>%
+  filter(content_rating %in% c("G", "PG", "PG-13", "R")) %>%
+  ggplot(aes(content_rating, imdb_score)) + geom_boxplot()
+```
+
+이로부터, 리뷰평점의 중간값은 G > R > PG > PG-13 의 순서임을
+알 수 있다. 
+그리고 이상치에 가까운 
+최고의 평점을 받은 R 등급 영화들이 있음을 알 수 있다.
+
+(고급: 이 최고 평점을 받은 R 등급 영화들은 무엇일까?)
+
+
+유사한 시각화로, 각 등급별로 평점의 확률밀도함수를 
+겹쳐 그려볼 수도 있다:
+```{r}
+df2 %>%
+  filter(content_rating %in% c("G", "PG", "PG-13", "R")) %>%
+  ggplot(aes(imdb_score, fill=content_rating, linetype=content_rating)) + 
+  geom_density(alpha=.3)
+```
+
+(필자는 색맹이므로, `fill=` 옵션으로는 
+각 집단이 충분히 구분이 되지 않아서 `linetype=`
+옵션도 사용하였다)
+이 시각화로부터 추가적으로 알 수 있는 것은
+G 등급 영화 중 평점이 높은 영화의 비중이 꾀
+높다는 것이다. (아마도 디즈니 영화들일까?)
+
+조금 더 전통적인 통계학적 가설검정을 적용하자면
+분산분석 (ANOVA; Analysis of Variance) 을
+해 보면  된다.
+```{r}
+summary(lm(imdb_score ~ content_rating, 
+           data=df2 %>% 
+             filter(content_rating %in% c("G", "PG", "PG-13", "R"))))
+```
+자료의 개수가 워낙 많아서이기도 하지만
+등급 집단간에 평점 평균이 통계적으로 유의한 차이가 있음을
+알 수 있다.
+
+
+### iv. 페이스북 좋아요 개수와 리뷰평점의 사이의 관계는?
+일단 페북 좋아요 개수(`move_facebook_likes`) 변수의
+분포를 살펴보자.
+꼬리가 아주 긴 분포이므로, 
+일단 제곱근 변환을 해 주었다.
+(독자들은 log10 변환도 해 보길 권한다.)
+
+```{r}
+df2 %>%
+  ggplot(aes(movie_facebook_likes)) +
+  geom_histogram() +
+  scale_x_sqrt()
+```
+
+이 시각화로부터 분포의 이상한 점이 눈에 띈다.
+변환 후 분포 중간에 이상한 갭이 있다는 것이다.
+
+(아직 필자는 그 이유를 찾지 못했으니, 알아낸 분은
+공유 바랍니다)
+
+이에 반해 평점의 분포는 상당히 정상적이다:
+```{r}
+df2 %>%
+  ggplot(aes(imdb_score)) +
+  geom_histogram()
+```
+
+이제, 
+제곱근 변환된 좋아요 개수와 스코어 간의 산점도를 그려보자.
+
+```{r}
+df2 %>%
+  ggplot(aes(movie_facebook_likes, imdb_score)) + 
+  geom_point() +
+  scale_x_sqrt() +
+  geom_smooth()
+```
+
+평활 곡선으로부터 양의 상관관계가 있음을 알 수 있다.
+어느정도는 상식적이게도
+"페북 좋아요 개수가 높을수록 리뷰 평점이 높다".
+
+
+하지만 이 분석이 정확한 분석일까?
+페북을 사람들이 사용한것은 비교적 최근의 일이다.
+따라서 과거의 영화는 좋은 영화이더라도 
+페북의 좋아요 개수가 적을 수도 있다.
+
+이를 확인하기 위해 년간 페북 좋아요 개수의 분포를 
+살펴보자:
+```{r}
+df2 %>%
+  ggplot(aes(as.factor(title_year), movie_facebook_likes)) +
+  geom_boxplot() +
+  scale_y_sqrt()
+```
+
+예상대로, 2010년 이전과 이후의 좋아요 개수의 분포는
+무척 다르다.
+
+따라서, 앞서와 같은 산점도를 
+그리되  2010년 이후, 그리고 미국 영화로 제한하여
+시각화 해 보자:
+```{r}
+df2 %>%
+  filter(title_year > 2010 & country == "USA") %>%
+  ggplot(aes(movie_facebook_likes, imdb_score)) + 
+  geom_point() +
+  scale_x_sqrt() +
+  geom_smooth()
+```
+
+마찬가지의 자료에서, 좋아요 개수가 100개가 넘는 
+데이터에 관해 두 변수간의 상관관계는 높은 편이다:
+```{r}
+df3 <- df2 %>%
+  filter(title_year > 2010 & country == "USA") %>%
+  filter(movie_facebook_likes > 100)
+cor(sqrt(df3$movie_facebook_likes), df3$imdb_score)
+```
+
+선형회귀분석을 적용하면 모수추정과 가설검정 결과도 
+얻을 수 있다:
+```{r}
+summary(lm(imdb_score ~ sqrt(movie_facebook_likes), data=df3))
+
+```
+
+
+
+
+## c. 이 데이터의 다른 흥미있는 시각화는 어떤 것이 있을까?
+(생략)
+
+# 2 (포켓몬 데이터)
+캐글 웹사이트에서 다음 포켓몬 데이터를 다운로드하자
+(<https://goo.gl/sMPKtX>, 혹은 <https://www.kaggle.com/abcsds/pokemon> 무료 캐글 계정이 필요하다).
+이 데이터를 시각화하라. 
+<https://goo.gl/3fxt2x> 혹은 <https://www.kaggle.com/ndrewgele/visualizing-pok-mon-stats-with-seaborn>을 참고하라.
+
+
+웹페이지에서 `pokemon.zip` 자료를 다운받은 후
+다음처럼 R로 읽어들인다:
+```{r}
+df_pkm <- read_csv("pokemon.zip")
+```
+
+데이터의 대강 모양은 다음과 같다:
+```{r}
+df_pkm %>% glimpse()
+```
+
+다양한 시각화가 가능하겠지만
+위의 예제 페이지에 나온 시각화를 해 보자면:
+```{r}
+df_pkm %>% ggplot(aes(HP)) + geom_histogram()
+df_pkm %>% ggplot(aes(Attack)) + geom_histogram()
+df_pkm %>% ggplot(aes(HP, Attack)) + geom_point(alpha=.3)
+```
+
+이 외에 다양한 시각화가 가능하겠지만,
+HP 와 Attack 간의 관계가 각 Type 에 따라 어떻게 
+변하는지 알고자 한다면 다음과 같은
+`facet_wrap()` 함수가 유용하다:
+
+```{r}
+df_pkm %>% 
+  ggplot(aes(HP, Attack)) + 
+  geom_point(alpha=.3) +
+  # geom_smooth() + 
+  facet_wrap(~`Type 1`)
+```
+
