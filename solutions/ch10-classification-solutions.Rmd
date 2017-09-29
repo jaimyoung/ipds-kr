@@ -1,0 +1,377 @@
+---
+title: "<따라 하며 배우는 데이터 과학> 10-11장 연습문제 해답"
+author: "권재명"
+date: "9/28/2017"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+저자 책 웹페이지: <https://dataninja.me/ipds-kr/>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+
+# R 환경 준비
+일단은 필수패키지인 `tidyverse`, 그리고 
+머신러닝을 위한 몇가지 패키지를 로드하자.
+(로딩 메시지를 감추기 위해 `suppressMessages()` 명령을 사용.)
+```{r}
+# install.packages("tidyverse")
+suppressMessages(library(tidyverse))
+
+# install.packages(c("ROCR", "MASS", "glmnet", "randomForest", "gbm", "rpart", "boot"))
+suppressMessages(library(gridExtra))
+suppressMessages(library(ROCR))
+suppressMessages(library(MASS))
+suppressMessages(library(glmnet))
+suppressMessages(library(randomForest))
+suppressMessages(library(gbm))
+suppressMessages(library(rpart))
+suppressMessages(library(boot))
+```
+
+책에서 기술한대로 이항 오차 함수, 그리고 `panel.cor` 함수를 정의하자:
+```{r}
+binomial_deviance <- function(y_obs, yhat){
+  epsilon = 0.0001
+  yhat = ifelse(yhat < epsilon, epsilon, yhat)
+  yhat = ifelse(yhat > 1-epsilon, 1-epsilon, yhat)
+  a = ifelse(y_obs==0, 0, y_obs * log(y_obs/yhat))
+  b = ifelse(y_obs==1, 0, (1-y_obs) * log((1-y_obs)/(1-yhat)))
+  return(2*sum(a + b))
+}
+
+# exmaple(pairs) 에서 따옴
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...){
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+```
+
+
+
+# 1. (위스콘신 유방암 데이터 II)
+위스콘신 유방암 데이터 중 약간 다른 데이터인 <https://goo.gl/gY8Iri> 혹은 <http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data>
+  를 분석하라. 변수에 대한 설명은
+<https://goo.gl/CqLTuk> 혹은
+<http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.names>
+  에서 볼 수 있다. 분석의 목적은 다른 10개의 변수를 사용하여 class = 2(양성; benign), 4(악성; malign) 값을 예측하는 것이다.
+
+우선 다음 명령으로 자료를 다운받자:
+```{bash eval=FALSE}
+wget http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.data 
+wget http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/breast-cancer-wisconsin.names 
+```
+
+R 로 자료를 읽어들인 후, 
+적절한 변수명을 부여하고, 
+ID 변수 ("Sample code number")를 제거하고,
+반응변수인 `class`를 0(Benign, 원래값 = 2)과 1(Malignant, 원래값 = 4)로 변환하자.
+원 데이터 파일에서, 결측치를 `?`로 나타내고 있으므로 `read_csv()`문의  `na=` 옵션을 
+사용하여 결측치를 올바로 읽어들여야 한다.
+```{r}
+df <- read_csv("breast-cancer-wisconsin.data", col_names = FALSE, na="?")
+names(df) <- tolower(gsub(" ", "_",
+             c("Sample code number",
+               "Clump Thickness", 
+               "Uniformity of Cell Size", 
+               "Uniformity of Cell Shape", 
+               "Marginal Adhesion", 
+               "Single Epithelial Cell Size", 
+               "Bare Nuclei", 
+               "Bland Chromatin", 
+               "Normal Nucleoli", 
+               "Mitoses", 
+               "Class")))
+df <- df %>%
+  mutate(is_malig=ifelse(class==4, 1, 0)) %>%
+  dplyr::select(-sample_code_number, -class)
+glimpse(df)
+```
+
+
+
+##  a. (결측치 처리)
+설명변수중에결측치가있는가?
+어느변수에몇개의결측치가있는가?
+어떻게해결하는것이좋 을까? 
+(관심 있는 독자는 Saar-Tsechansky & Provost (2007) 등을 참고하라.)
+
+결측치를 찾아내는 간단한 방법은 `summary()` 함수를 사용하는 것이다:
+```{r}
+summary(df)
+```
+`bare_nuclei` 변수에 16개의 결측치가 있음을 알 수 있다.
+
+결측치를 해결하는 다양한 방법이 있지만 여기서는 간단히 
+중앙값으로 대치하도록 하자.
+```{r}
+df <- df %>%
+  mutate(bare_nuclei=ifelse(is.na(bare_nuclei), 
+                            median(df$bare_nuclei, na.rm=TRUE),
+                            bare_nuclei))
+summary(df)
+```
+
+
+##  b. (분류분석)
+결측치를 표본의 중앙값으로 대치하고 분류 예측분석을 시행하라. 
+어떤 모형이 가장 성능이 좋은 가? 결과를 슬라이드 10여 장 내외로 요약하라.
+
+
+수량형 변수들간의 관계는 산점도 행렬로 살펴볼 수 있다:
+```{r}
+set.seed(2017)
+df %>% 
+  sample_n(500) %>% 
+  pairs(lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+    upper.panel = panel.cor)
+```
+(`select` 함수가 `MASS` 라이브러리에 재정의 된 관계로 `dplyr::select()`로 표기했다. )
+대부분의 설명변수가 반응변수와 상관관계가 높음을 알 수 있다.
+설명변수 간의 상관관계도 높은 편이다.
+
+
+
+
+
+
+
+
+## 훈련, 검증, 테스트셋의 구분
+
+원 데이터를 6:4:4 비율로 훈련, 검증, 테스트셋으로 나누도록 하자.
+(재현 가능성을 위해 `set.seed()`를 사용했다.)
+```{r}
+set.seed(2017)
+n <- nrow(df)
+idx <- 1:n
+training_idx <- sample(idx, n * .60)
+idx <- setdiff(idx, training_idx)
+validate_idx = sample(idx, n * .20)
+test_idx <- setdiff(idx, validate_idx)
+length(training_idx)
+length(validate_idx)
+length(test_idx)
+training <- df[training_idx,]
+validation <- df[validate_idx,]
+test <- df[test_idx,]
+```
+
+
+
+## A. 로지스틱 회귀분석
+
+```{r}
+df_glm_full <- glm(is_malig ~ ., data=training, family=binomial)
+summary(df_glm_full)
+```
+통계적으로 유의한 변수들로는,
+`bare_nuclei`값이 클수록,
+`clump_thickness`값이 클수록, 
+그리고 `bland_chromatin` 값이 클수록, 
+악성일 확율이 높음을 알 수 있다.
+
+로지스틱 모형의 예측 정확도 지표는 다음처럼 계산하고 시각화할 수 있다:
+```{r}
+y_obs <- validation$is_malig
+yhat_lm <- predict(df_glm_full, newdata=validation, type='response')
+ggplot(data.frame(y_obs, yhat_lm),
+             aes(yhat_lm, fill=factor(y_obs))) +
+  geom_density(alpha=.5)
+binomial_deviance(y_obs, yhat_lm)
+pred_lm <- prediction(yhat_lm, y_obs)
+perf_lm <- performance(pred_lm, measure = "tpr", x.measure = "fpr")
+performance(pred_lm, "auc")@y.values[[1]]
+```
+
+
+## B. glmnet 함수를 통한 라쏘 모형, 능형회귀, 변수선택
+
+```{r}
+xx <- model.matrix(is_malig ~ .-1, df)
+x <- xx[training_idx, ]
+y <- training$is_malig
+df_cvfit <- cv.glmnet(x, y, family = "binomial")
+```
+
+
+```{r}
+plot(df_cvfit)
+```
+
+
+```{r}
+y_obs <- validation$is_malig
+yhat_glmnet <- predict(df_cvfit, s="lambda.1se", newx=xx[validate_idx,], type='response')
+yhat_glmnet <- yhat_glmnet[,1] # change to a vectro from [n*1] matrix
+binomial_deviance(y_obs, yhat_glmnet)
+pred_glmnet <- prediction(yhat_glmnet, y_obs)
+perf_glmnet <- performance(pred_glmnet, measure="tpr", x.measure="fpr")
+performance(pred_glmnet, "auc")@y.values[[1]]
+```
+
+
+## C. 나무모형
+
+나무모형을 적합하는 `rpart::rpart()` 함수를 적용할 때 주의할 사항은
+수량형 반응변수 `is_malig` 를 인자로 변환해주어서 
+회귀 나무모형이 아니라 분류분석 나무모형을 적합하는 것이다.
+```{r}
+df_tr <- rpart(as.factor(is_malig) ~ ., data = training)
+df_tr
+# printcp(df_tr)
+# summary(df_tr)
+opar <- par(mfrow = c(1,1), xpd = NA)
+plot(df_tr)
+text(df_tr, use.n = TRUE)
+par(opar)
+```
+
+나무모형의 출력 결과를 살펴보면 어떤 변수들의 조합이
+가장 악성 종양일 가능성이 높은지를 알 수 있다.
+그림에서 가장 "악성(is_malig)"의 비율이 높은 잎(leaf)는 가장 오른쪽의 
+잎이다. 즉, 다음 조건을 만족할 때, 103 케이스 중, 101개의 관측치가 악성이였다:
+
+- `3) uniformity_of_cell_size>=3.5 131   9 1 (0.06870229 0.93129771)`
+- `7) bland_chromatin>=3.5 103   2 1 (0.01941748 0.98058252) *`
+
+
+
+```{r}
+yhat_tr <- predict(df_tr, validation)[, "1"]
+binomial_deviance(y_obs, yhat_tr)
+pred_tr <- prediction(yhat_tr, y_obs)
+perf_tr <- performance(pred_tr, measure = "tpr", x.measure = "fpr")
+performance(pred_tr, "auc")@y.values[[1]]
+```
+
+
+## D. 랜덤 포레스트
+`randomForest()` 함수를 적용할 때 주의할 사항은
+앞서 나무모형과 마찬가지로
+  수량형 반응변수 `is_malig` 를 인자로 변환해주어서 
+  회귀모형이 아닌 분류분석이 실행되도록 한다.
+
+
+```{r}
+set.seed(2017)
+df_rf <- randomForest(as.factor(is_malig) ~ ., training)
+df_rf
+```
+
+랜덤포레스트 모형의 오류 감소 추세 그래프는 다음과 같다:
+```{r}
+plot(df_rf)
+```
+
+각 변수들의 모형에의 기여도는 다음과 같다:
+```{r}
+varImpPlot(df_rf)
+```
+
+랜덤포레스트 모형의 예측결과는 다음과 같다:
+```{r}
+yhat_rf <- predict(df_rf, newdata=validation, type='prob')[,'1']
+binomial_deviance(y_obs, yhat_rf)
+pred_rf <- prediction(yhat_rf, y_obs)
+perf_rf <- performance(pred_rf, measure="tpr", x.measure="fpr")
+performance(pred_tr, "auc")@y.values[[1]]
+```
+
+
+## E. 부스팅 
+(결과 생략)
+
+## 모형 비교, 최종 모형 선택, 일반화 성능 평가
+
+다음과 같은 시각화로 각 예측모형들의 예측확률들의 관계를 알 수 있다:
+```{r}
+pairs(data.frame(y_obs=y_obs,
+                 yhat_lm=yhat_lm,
+                 yhat_glmnet=c(yhat_glmnet),
+                 yhat_tr=yhat_tr,
+                 yhat_rf=yhat_rf),
+      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+      upper.panel = panel.cor)
+```
+고려한 모든 모형이 유사한 예측결과를 줌을 알 수 있다.
+
+
+검증셋 AUC 값이 가장 높은 모형은 간단한 선형모형이었다.
+테스트셋을 이용해 선형모형의 일반화 능력을 계산해보자:
+```{r}
+y_obs_test <- test$is_malig
+yhat_glm_test <- predict(df_glm_full, newdata=test, type='response')
+binomial_deviance(y_obs_test, yhat_glm_test)
+pred_glm_test <- prediction(yhat_glm_test, y_obs_test)
+performance(pred_glm_test, "auc")@y.values[[1]]
+```
+
+
+마지막으로 ROC 커브를 통해 네 예측방법을 비교해보자.
+```{r}
+plot(perf_lm, col='black', main="ROC Curve")
+plot(perf_glmnet, add=TRUE, col='blue')
+plot(perf_tr, add=TRUE, col='red')
+plot(perf_rf, add=TRUE, col='cyan')
+legend('bottomright', inset=.1,
+       legend=c("GLM", "glmnet", "Tree", "RF"),
+       col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
+```
+
+## 결론
+반응변수가 비교적 예측이 쉬운 변수이다.
+간단한 로지스틱 모형으로 높은 예측력을 얻을 수 있다.
+변수 해석에 관해서는 로지스틱 모형 결과와, 나무모형 결과를 참조하라.
+
+
+# 2. (위스콘신 유방암 데이터 III)
+  2 위스콘신 유방암 데이터 중 또 다른 데이터인 <https://goo.gl/KaZD7Y>
+    혹은 <http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wpbc.data>
+    를 분석하라. 이 진단(diagnostics) 데 이터에 대한 설명은 <https://goo.gl/mVFQUa> 혹은
+  <http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wpbc.names>
+에서 볼 수 있다. 두 가지 분석이 가능하다. 
+
+- (1) 2열의 outcome 변수를 예측하기[분류분석];
+- (2) 재발(recurrent)한 관측치들에 대해서 3열의 
+    재발 기간(time to recur) 예측하 기[회귀분석].
+
+이 중 분류분석인 (1)을 시행하라. 분석 결과를 슬라이드 10여 장 내외로 요약하라.
+
+우선 자료를 다운로드한다:
+```{bash eval=FALSE}
+wget http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wpbc.data
+wget http://archive.ics.uci.edu/ml/machine-learning-databases/breast-cancer-wisconsin/wpbc.names
+```
+
+(생략. 위와 같은 방법을 적용하면 된다.)
+
+
+
+# 3 (스팸 데이터)
+스팸 데이터 <https://goo.gl/gIZU9C> 혹은 <https://archive.ics.uci.edu/ml/datasets/Spambase> 
+를 분석하라. 어떤 모형이 가장 높은 성능을 주는가? 
+분석 결과를 슬 라이드 10여 장 내외로 요약하라.
+
+(생략. 본문의 11장을 참조.)
+
+
+# 4 (고차원 분류분석)
+<https://archive.ics.uci.edu/ml/datasets> 혹은
+<https://www.kaggle.com/datasets> 에서 다른 고차원 분류분석 데이터를 찾아서 본문에 설명한 분석을 실행하고, 
+결과를 슬라이드 10여 장 내외로 요약하라.
+
+(생략. 8-9장 연습문제 해답 참조.
+<http://rpubs.com/dataninja/ipds-kr-ch08> )
+
