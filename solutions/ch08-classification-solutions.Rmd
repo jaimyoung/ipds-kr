@@ -117,19 +117,23 @@ df %>%
 # set.seed(2017); df %>% sample_n(1000)  %>% GGally::ggpairs()
 ```
 
+
+
+## 훈련, 검증, 테스트셋의 구분
+
+
 모형행렬은 반응변수 `left` 를 제외한 모든 변수들을
 `model.matrix()` 에 입력해주면 얻을 수 있다:
 ```{r}
 x <- model.matrix( ~ . - left, data=df)
 glimpse(x)
 colnames(x)
+dim(x)
 ```
-
 모형의 차원은 $p=19$ 임을 알 수 있다.
 
-
-## 훈련, 검증, 테스트셋의 구분
 원 데이터를 6:4:4 비율로 훈련, 검증, 테스트셋으로 나누도록 하자.
+(재현 가능성을 위해 `set.seed()`를 사용했다.)
 ```{r}
 set.seed(2017)
 n <- nrow(df)
@@ -151,15 +155,15 @@ test <- df[test_idx,]
 ## A. 로지스틱 회귀분석
 
 ```{r}
-ad_glm_full <- glm(left ~ ., data=training, family=binomial)
-summary(ad_glm_full)
+df_glm_full <- glm(left ~ ., data=training, family=binomial)
+summary(df_glm_full)
 ```
 
 
 로지스틱 모형의 예측 정확도 지표는 다음처럼 계산하고 시각화할 수 있다:
 ```{r}
 y_obs <- validation$left
-yhat_lm <- predict(ad_glm_full, newdata=validation, type='response')
+yhat_lm <- predict(df_glm_full, newdata=validation, type='response')
 ggplot(data.frame(y_obs, yhat_lm),
              aes(yhat_lm, fill=factor(y_obs))) +
   geom_density(alpha=.5)
@@ -177,257 +181,170 @@ performance(pred_lm, "auc")@y.values[[1]]
 xx <- model.matrix(left ~ .-1, df)
 x <- xx[training_idx, ]
 y <- training$left
-ad_glmnet_fit <- glmnet(x, y)
-
+df_cvfit <- cv.glmnet(x, y, family = "binomial")
 ```
 
 
-```{r eval=FALSE}
-
-plot(ad_glmnet_fit)
-
-coef(ad_glmnet_fit, s = c(.1713, .1295))
+```{r}
+plot(df_cvfit)
+```
 
 
-
-ad_cvfit <- cv.glmnet(x, y, family = "binomial")
-
-plot(ad_cvfit)
-
-png("../../plots/9-2.png", 5.5, 4, units='in', pointsize=9, res=600)
-plot(ad_cvfit)
-dev.off()
-
-log(ad_cvfit$lambda.min)
-log(ad_cvfit$lambda.1se)
-
-coef(ad_cvfit, s=ad_cvfit$lambda.1se)
-coef(ad_cvfit, s="lambda.1se")
-
-length(which(coef(ad_cvfit, s="lambda.min")>0))
-length(which(coef(ad_cvfit, s="lambda.1se")>0))
-
-# 9.1.4.  값의 선택
-
-set.seed(1607)
-foldid <- sample(1:10, size=length(y), replace=TRUE)
-cv1 <- cv.glmnet(x, y, foldid=foldid, alpha=1, family='binomial')
-cv.5 <- cv.glmnet(x, y, foldid=foldid, alpha=.5, family='binomial')
-cv0 <- cv.glmnet(x, y, foldid=foldid, alpha=0, family='binomial')
-
-png("../../plots/9-3.png", 5.5, 4, units='in', pointsize=7, res=600)
-par(mfrow=c(2,2))
-plot(cv1, main="Alpha=1.0")
-plot(cv.5, main="Alpha=0.5")
-plot(cv0, main="Alpha=0.0")
-plot(log(cv1$lambda), cv1$cvm, pch=19, col="red",
-     xlab="log(Lambda)", ylab=cv1$name, main="alpha=1.0")
-points(log(cv.5$lambda), cv.5$cvm, pch=19, col="grey")
-points(log(cv0$lambda), cv0$cvm, pch=19, col="blue")
-legend("topleft", legend=c("alpha= 1", "alpha= .5", "alpha 0"),
-       pch=19, col=c("red","grey","blue"))
-dev.off()
-
-
-predict(ad_cvfit, s="lambda.1se", newx = x[1:5,], type='response')
-
-y_obs <- ifelse(validation$left == ">50K", 1, 0)
-yhat_glmnet <- predict(ad_cvfit, s="lambda.1se", newx=xx[validate_idx,], type='response')
+```{r}
+y_obs <- validation$left
+yhat_glmnet <- predict(df_cvfit, s="lambda.1se", newx=xx[validate_idx,], type='response')
 yhat_glmnet <- yhat_glmnet[,1] # change to a vectro from [n*1] matrix
 binomial_deviance(y_obs, yhat_glmnet)
-# [1] 4257.118
 pred_glmnet <- prediction(yhat_glmnet, y_obs)
 perf_glmnet <- performance(pred_glmnet, measure="tpr", x.measure="fpr")
-
 performance(pred_glmnet, "auc")@y.values[[1]]
-
-png("../../plots/9-4.png", 5.5, 4, units='in', pointsize=9, res=600)
-plot(perf_lm, col='black', main="ROC Curve")
-plot(perf_glmnet, col='blue', add=TRUE)
-abline(0,1, col='gray')
-legend('bottomright', inset=.1,
-       legend=c("GLM", "glmnet"),
-       col=c('black', 'blue'), lty=1, lwd=2)
-dev.off()
+```
 
 
-# 9.2. 나무모형
-library(rpart)
-cvr_tr <- rpart(left ~ ., data = training)
-cvr_tr
+## C. 나무모형
 
-
-printcp(cvr_tr)
-summary(cvr_tr)
-
-
-
-png("../../plots/9-6.png", 5.5, 4, units='in', pointsize=9, res=600)
+나무모형을 적합하는 `rpart::rpart()` 함수를 적용할 때 주의할 사항은
+수량형 반응변수 `left` 를 인자로 변환해주어서 
+회귀 나무모형이 아니라 분류분석 나무모형을 적합하는 것이다.
+```{r}
+df_tr <- rpart(as.factor(left) ~ ., data = training)
+df_tr
+# printcp(df_tr)
+# summary(df_tr)
 opar <- par(mfrow = c(1,1), xpd = NA)
-plot(cvr_tr)
-text(cvr_tr, use.n = TRUE)
+plot(df_tr)
+text(df_tr, use.n = TRUE)
 par(opar)
-dev.off()
+```
 
+나무모형의 출력 결과를 살펴보면 어떤 변수들의 조합이
+직원의 이직율을 높이는 지 알수 있다.
+그림에서 가장 "성공"(이직)의 비율이 높은 잎(leaf)는 가장 오른쪽의 
+잎, 즉:
 
-yhat_tr <- predict(cvr_tr, validation)
-yhat_tr <- yhat_tr[,">50K"]
+- `3) satisfaction_level< 0.465 2551 1025 1 (0.40180321 0.59819679)`
+-  `7) number_project< 2.5 1069  125 1 (0.11693171 0.88306829)`
+- `15) last_evaluation< 0.575 985   48 1 (0.04873096 0.95126904) *`
+
+만족도가 낮고, 일한 프로젝트가 적고, 마지막 업무평가가 좋지 않은 집단임을 알 수 있다.
+
+```{r}
+yhat_tr <- predict(df_tr, validation)[, "1"]
 binomial_deviance(y_obs, yhat_tr)
 pred_tr <- prediction(yhat_tr, y_obs)
 perf_tr <- performance(pred_tr, measure = "tpr", x.measure = "fpr")
 performance(pred_tr, "auc")@y.values[[1]]
-
-png("../../plots/9-7.png", 5.5, 4, units='in', pointsize=9, res=600)
-plot(perf_lm, col='black', main="ROC Curve")
-plot(perf_tr, col='blue', add=TRUE)
-abline(0,1, col='gray')
-legend('bottomright', inset=.1,
-    legend = c("GLM", "Tree"),
-    col=c('black', 'blue'), lty=1, lwd=2)
-dev.off()
+```
 
 
-# 9.3. 랜덤 포레스트 -----------
+## D. 랜덤 포레스트 -----------
+`randomForest()` 함수를 적용할 때 주의할 사항은:
 
-set.seed(1607)
-ad_rf <- randomForest(left ~ ., training)
-ad_rf
-
-png("../../plots/9-8.png", 5.5, 4, units='in', pointsize=9, res=600)
-plot(ad_rf)
-dev.off()
-
-tmp <- importance(ad_rf)
-head(round(tmp[order(-tmp[,1]), 1, drop=FALSE], 2), n=10)
-
-png("../../plots/9-9.png", 5.5, 4, units='in', pointsize=9, res=600)
-varImpPlot(ad_rf)
-dev.off()
-
-predict(ad_rf, newdata = df[1:5,])
-
-predict(ad_rf, newdata = df[1:5,], type="prob")
+1. 앞서 나무모형과 마찬가지로
+  수량형 반응변수 `left` 를 인자로 변환해주어서 
+  회귀모형이 아닌 분류분석이 실행되도록 한다.
+2. 설명변수중 character 형인 두 변수 `sales`, `salary` 도 인자형으로 
+  바꿔줘야 한다.
 
 
-yhat_rf <- predict(ad_rf, newdata=validation, type='prob')[,'>50K']
+```{r}
+set.seed(2017)
+df_rf <- randomForest(as.factor(left) ~ ., training %>%
+                        mutate(salary=as.factor(salary),
+                               sales=as.factor(sales)))
+df_rf
+```
+
+랜덤포레스트 모형의 오류 감소 추세 그래프는 다음과 같다:
+```{r}
+plot(df_rf)
+```
+
+각 변수들의 모형에의 기여도는 다음과 같다:
+```{r}
+varImpPlot(df_rf)
+```
+
+예측을 실행할 때는, 훈련셋과 마찬가지의 `as.factor` 변환을 
+같은 변수에 적용해야 한다:
+```{r}
+yhat_rf <- predict(df_rf,
+                   newdata=validation %>%
+                     mutate(salary=as.factor(salary), sales=as.factor(sales)),
+                   type='prob')[,'1']
 binomial_deviance(y_obs, yhat_rf)
 pred_rf <- prediction(yhat_rf, y_obs)
 perf_rf <- performance(pred_rf, measure="tpr", x.measure="fpr")
 performance(pred_tr, "auc")@y.values[[1]]
-
-png("../../plots/9-10.png", 5.5, 4, units='in', pointsize=9, res=600)
-plot(perf_lm, col='black', main="ROC Curve")
-plot(perf_glmnet, add=TRUE, col='blue')
-plot(perf_rf, add=TRUE, col='red')
-abline(0,1, col='gray')
-legend('bottomright', inset=.1,
-       legend = c("GLM", "glmnet", "RF"),
-       col=c('black', 'blue', 'red'), lty=1, lwd=2)
-dev.off()
+```
 
 
-# 9.3.5. 예측확률값 자체의 비교
-p1 <- data.frame(yhat_glmnet, yhat_rf) %>%
-  ggplot(aes(yhat_glmnet, yhat_rf)) +
-  geom_point(alpha=.5) +
-  geom_abline() +
-  geom_smooth()
-p2 <- reshape2::melt(data.frame(yhat_glmnet, yhat_rf)) %>%
-  ggplot(aes(value, fill=variable)) +
-  geom_density(alpha=.5)
-grid.arrange(p1, p2, ncol=2)
-g <- arrangeGrob(p1, p2, ncol=2)
-ggsave("../../plots/9-11.png", g, width=5.5*1.2, height=4*.8, units='in', dpi=600)
-
-
-# 9.4. 부스팅 ----------
-
-set.seed(1607)
-df_gbm <- training %>% mutate(left=ifelse(left == ">50K", 1, 0))
-ad_gbm <- gbm(left ~ ., data=df_gbm,
+## E. 부스팅 
+(결과 생략)
+관심있는 독자는 다음 코드로 부스팅 모형을 실행할 수 있다.
+앞서 랜덤포레스트 모형과 마찬가지로, 문자형 변수를 인자형 변수로 먼저 변환해
+주어야 한다.
+```{r eval=FALSE}
+set.seed(2017)
+df_gbm <- gbm(left ~ ., data=training %>%
+                     mutate(salary=as.factor(salary), sales=as.factor(sales)),
              distribution="bernoulli",
-             n.trees=50000, cv.folds=3, verbose=TRUE)
-(best_iter <- gbm.perf(ad_gbm, method="cv"))
-
-ad_gbm2 <- gbm.more(ad_gbm, n.new.trees=10000)
-(best_iter <- gbm.perf(ad_gbm2, method="cv"))
+             n.trees=1000, cv.folds=3, verbose=TRUE)
+(best_iter <- gbm.perf(df_gbm, method="cv"))
 
 
-png("../../plots/9-12.png", 5.5, 4, units='in', pointsize=9, res=600)
-(best_iter <- gbm.perf(ad_gbm2, method="cv"))
-dev.off()
-
-
-predict(ad_gbm, n.trees=best_iter, newdata=df_gbm[1:5,], type='response')
-
-yhat_gbm <- predict(ad_gbm, n.trees=best_iter, newdata=validation, type='response')
+yhat_gbm <- predict(df_gbm, n.trees=best_iter,
+                    newdata=validation %>%
+                     mutate(salary=as.factor(salary), sales=as.factor(sales)), 
+                    type='response')
 binomial_deviance(y_obs, yhat_gbm)
 pred_gbm <- prediction(yhat_gbm, y_obs)
 perf_gbm <- performance(pred_gbm, measure="tpr", x.measure="fpr")
 performance(pred_gbm, "auc")@y.values[[1]]
-
-
-png("../../plots/9-13.png", 5.5, 4, units='in', pointsize=9, res=600)
-plot(perf_lm, col='black', main="ROC Curve")
-plot(perf_glmnet, add=TRUE, col='blue')
-plot(perf_rf, add=TRUE, col='red')
-plot(perf_gbm, add=TRUE, col='cyan')
-abline(0,1, col='gray')
-legend('bottomright', inset=.1,
-    legend=c("GLM", "glmnet", "RF", "GBM"),
-    col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
-dev.off()
-
-
-
-# 9.5. 모형 비교, 최종 모형 선택, 일반화 성능 평가 ----
-
-
-png("../../plots/9-14.png", 5.5, 4, units='in', pointsize=9, res=600)
-pairs(data.frame(y_obs=y_obs,
-                yhat_lm=yhat_lm,
-                yhat_glmnet=c(yhat_glmnet),
-              yhat_rf=yhat_rf,
-                yhat_gbm=yhat_gbm),
-    lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
-    upper.panel = panel.cor)
-dev.off()
-
-
-# 9.5.3. 테스트셋을 이용한 일반화능력 계산
-y_obs_test <- ifelse(test$left == ">50K", 1, 0)
-yhat_gbm_test <- predict(ad_gbm, n.trees=best_iter, newdata=test, type='response')
-binomial_deviance(y_obs_test, yhat_gbm_test)
-pred_gbm_test <- prediction(yhat_gbm_test, y_obs_test)
-performance(pred_gbm_test, "auc")@y.values[[1]]
-
-# 9.6.5. 캐럿 (caret) 패키지
-install.packages("caret", dependencies = c("Depends", "Suggests"))
-
-
-
-# This is for the earlier ROC curve example. ---
-{
-  png("../../plots/8-1.png", 5.5*1.2, 4*.8, units='in', pointsize=9, res=600)
-  opar <- par(mfrow=c(1,2))
-  plot(perf_lm, col='black', main="ROC Curve")
-  plot(perf_tr, col='blue', add=TRUE)
-  abline(0,1, col='gray')
-  legend('bottomright', inset=.1,
-      legend = c("GLM", "Tree"),
-      col=c('black', 'blue'), lty=1, lwd=2)
-  plot(perf_lm, col='black', main="ROC Curve")
-  plot(perf_glmnet, add=TRUE, col='blue')
-  plot(perf_rf, add=TRUE, col='red')
-  plot(perf_gbm, add=TRUE, col='cyan')
-  abline(0,1, col='gray')
-  legend('bottomright', inset=.1,
-      legend=c("GLM", "glmnet", "RF", "GBM"),
-      col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
-  par(opar)
-  dev.off()
-}
-
 ```
 
 
+## 모형 비교, 최종 모형 선택, 일반화 성능 평가
+
+다음과 같은 시각화로 각 예측모형들의 예측확률들의 관계를 알 수 있다:
+```{r}
+pairs(data.frame(y_obs=y_obs,
+                 yhat_lm=yhat_lm,
+                 yhat_glmnet=c(yhat_glmnet),
+                 yhat_tr=yhat_tr,
+                 yhat_rf=yhat_rf),
+      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+      upper.panel = panel.cor)
+```
+로지스틱 모형과 glmnet 모형은 매우 유사한 결과를 주는 것을 알 수 있다.
+그리고, 나무 모형과 랜덤포레스트 모형도 상관관계가 높다.
+반응변수의 관측치와 가장 상관관계가 높은, 즉 예측력이 높은 방법은 랜덤포레스트이다.
+
+테스트셋을 이용해 일반화 능력을 계산해보자:
+```{r}
+y_obs_test <- test$left
+yhat_rf_test <- predict(df_rf,
+                   newdata=test %>%
+                     mutate(salary=as.factor(salary), sales=as.factor(sales)),
+                   type='prob')[,'1']
+binomial_deviance(y_obs_test, yhat_rf_test)
+pred_rf_test <- prediction(yhat_rf_test, y_obs_test)
+performance(pred_rf_test, "auc")@y.values[[1]]
+```
+
+
+마지막으로 ROC 커브를 통해 네 예측방법을 비교해보자.
+```{r}
+plot(perf_lm, col='black', main="ROC Curve")
+plot(perf_glmnet, add=TRUE, col='blue')
+plot(perf_tr, add=TRUE, col='red')
+plot(perf_rf, add=TRUE, col='cyan')
+legend('bottomright', inset=.1,
+       legend=c("GLM", "glmnet", "Tree", "RF"),
+       col=c('black', 'blue', 'red', 'cyan'), lty=1, lwd=2)
+```
+
+## 결론
+자료 자체가 가상의 (synthetic), 시뮬레이트 된 자료이므로
+비교적 간단한 모형인 나무모형으로도 무척 높은 예측력을 얻을 수 있었다.
+변수 해석에 관해서는 나무모형 결과를 참조하라.
