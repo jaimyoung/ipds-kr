@@ -1,0 +1,465 @@
+---
+title: "<따라 하며 배우는 데이터 과학> 13-14장 연습문제 해답"
+author: "권재명"
+date: "9/29/2017"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+저자 책 웹페이지: <https://dataninja.me/ipds-kr/>
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+
+# R 환경 준비
+일단은 필수패키지인 `tidyverse`, 그리고 
+머신러닝을 위한 몇가지 패키지를 로드하자.
+(로딩 메시지를 감추기 위해 `suppressMessages()` 명령을 사용.)
+```{r}
+# install.packages("tidyverse")
+suppressMessages(library(tidyverse))
+
+# install.packages(c("ROCR", "MASS", "glmnet", "randomForest", "gbm", "rpart", "boot"))
+suppressMessages(library(gridExtra))
+suppressMessages(library(ROCR))
+suppressMessages(library(MASS))
+suppressMessages(library(glmnet))
+suppressMessages(library(randomForest))
+suppressMessages(library(gbm))
+suppressMessages(library(rpart))
+suppressMessages(library(boot))
+```
+
+책에서 기술한대로 RMSE (root mean squared error), 
+MAE (median absolute error),
+`panel.cor` 함수를 정의하자:
+```{r}
+rmse <- function(yi, yhat_i){
+  sqrt(mean((yi - yhat_i)^2))
+}
+
+mae <- function(yi, yhat_i){
+  mean(abs(yi - yhat_i))
+}
+
+# exmaple(pairs) 에서 따옴
+panel.cor <- function(x, y, digits = 2, prefix = "", cex.cor, ...){
+  usr <- par("usr"); on.exit(par(usr))
+  par(usr = c(0, 1, 0, 1))
+  r <- abs(cor(x, y))
+  txt <- format(c(r, 0.123456789), digits = digits)[1]
+  txt <- paste0(prefix, txt)
+  if(missing(cex.cor)) cex.cor <- 0.8/strwidth(txt)
+  text(0.5, 0.5, txt, cex = cex.cor * r)
+}
+
+```
+
+
+
+# 13-1. (아이오와 주 주택 가격데이터 분석)
+아이오와 주의 에임스시 주택 가격데이터(De Cock, 2011)를 구하여 
+회귀분석을 행하라. 
+데이터는 <https://goo.gl/ul7Ub7>
+(<https://www.kaggle.com/c/house-prices-advanced-regression-techniques>)
+혹은 
+<https://goo.gl/8gKgaT> (<http://www.amstat.org/publications/jse/v19n3/decock/AmesHousing.xls>)
+<https://goo.gl/qgVg2z> (<https://ww2.amstat.org/publications/jse/v19n3/decock/AmesHousing.txt>) 에서 구할 수 있다. 
+
+변수 설명은 
+<https://goo.gl/2vcCfT> (<https://ww2.amstat.org/publications/jse/v19n3/decock/DataDocumentation.txt>)
+를 참조하라.
+<https://ww2.amstat.org/publications/jse/v19n3/decock.pdf> 문서를 참조해도 좋다.
+
+이 데이터에 대한 회귀분석을 행하라. 
+본문에서 기술한 방법 중 어떤 회귀분 석 방법이 가장 정확한 결과를 주는가? 
+결과를 보고서로 정리하라.
+
+## 자료 취득
+우선 다음 명령으로 자료를 다운받자:
+```{bash eval=FALSE}
+wget https://ww2.amstat.org/publications/jse/v19n3/decock/AmesHousing.txt
+wget https://ww2.amstat.org/publications/jse/v19n3/decock/AmesHousing.xls
+```
+
+R 로 자료를 읽어들인 후, 
+다음처럼 변수명을 변환하자:
+
+1. `make.names(..., unique=TRUE)` 함수로 변수명을 R 에서 사용이 쉬운 이름으로 바꾼다.
+1. 마침표(.) 대신 밑줄(_)을 사용한다.
+1. 모두 소문자로 바꾼다
+
+그리고, id 변수인 order, pid 를 제거한다.
+
+```{r}
+df1 <- read_tsv("AmesHousing.txt")
+names(df1) <- tolower(gsub("\\.", "_", make.names(names(df1), unique=TRUE)))
+df1 <- df1 %>% dplyr::select(-order, -pid)
+glimpse(df1)
+```
+
+
+##  결측치 처리
+
+자료의 여러 변수에 결측치가 포함되어 있다.
+결측치를 찾아내는 간단한 방법은 `summary()` 함수를 사용하는 것이다:
+```{r}
+# summary(df)
+```
+
+
+또다른 방법은 다음처럼 `summarize_all()` + `funs()` 트릭을 이용하는 것이다:
+```{r}
+df1 %>%
+  summarize_all(funs(length(which(is.na(.)))/length(.))) %>% 
+  glimpse()
+```
+이로부터 여러 변수들이 결측치를 가지고 있음을 알 수 있다.
+
+결측치를 해결하는 다양한 방법이 있지만 여기서는 간단히 처리한다:
+
+1. 수량형 변수는 중앙값으로 대치한다.
+2. 문자형 변수는 ~~최빈값~~`"NA"` 문자열로 대치한다.
+
+아래 명령은 `mutate_if()`, `rename_all()` 함수등을 이용하여 
+위의 처리를 해준다:
+```{r}
+df2 <- df1 %>%
+  mutate_if(is.numeric, funs(imp=ifelse(is.na(.), median(., na.rm=TRUE), .))) %>%
+  # mutate_if(is.character, funs(imp=ifelse(is.na(.), sort(table(.), decreasing=TRUE)[1], .))) %>%
+  mutate_if(is.character, funs(imp=ifelse(is.na(.), "NA", .))) %>%
+  dplyr::select(ends_with("_imp")) %>%
+  rename_all(funs(gsub("_imp", "", .)))
+df2 %>% glimpse()
+```
+
+그리고, `mo_sold` 변수는 수량형으로 읽어들였지만, 수량형보다는 범주형으로
+간주하는 것이 좋을 것 같다.
+이 외에 다양한 변수를 하나하나 살펴보면 다른 많은 전처리를 해 줄 수 
+있겠지만, 일단 위와 같은 변환을 한 자료를 우리의 분석자료로 저장하도록 하자:
+
+```{r}
+df <- df2 %>% mutate(mo_sold=as.character(mo_sold))
+```
+
+
+
+## 훈련, 검증, 테스트셋의 구분
+
+원 데이터를 6:4:4 비율로 훈련, 검증, 테스트셋으로 나누도록 하자.
+(재현 가능성을 위해 `set.seed()`를 사용했다.)
+```{r}
+set.seed(2017)
+n <- nrow(df)
+idx <- 1:n
+training_idx <- sample(idx, n * .60)
+idx <- setdiff(idx, training_idx)
+validate_idx = sample(idx, n * .20)
+test_idx <- setdiff(idx, validate_idx)
+length(training_idx)
+length(validate_idx)
+length(test_idx)
+training <- df[training_idx,]
+validation <- df[validate_idx,]
+test <- df[test_idx,]
+```
+
+
+일부 분석 함수는 
+문자형 변수를 자동적으로 인자형으로 변환하지 않으므로, 다음 
+데이터셋도 만들어 두자. `mutate_if()` 함수를 이용하였다.
+```{r}
+dff <- df %>% mutate_if(is.character, as.factor)
+glimpse(dff)
+training_f <- dff[training_idx, ]
+validation_f <- dff[validate_idx, ]
+test_f <- dff[test_idx, ]
+```
+
+
+## A. 회귀분석
+
+일단 모든 변수를 다 넣은 선형모형을 돌려보자:
+```{r}
+df_lm_full <- lm(saleprice ~ ., data=training_f)
+summary(df_lm_full)
+```
+통계적으로 유의한 여러 변수들이 잡힌다.
+
+아쉽게도, 선형모형을 실행하려면 다음과 같은 에러가 생긴다.
+훈련셋에는 없는 인자 수준이 검증 셋에 나타나기 때문이다.
+```{r eval=FALSE}
+y_obs <- validation$saleprice
+yhat_lm <- predict(df_lm_full, newdata=validation_f)
+```
+
+```
+ Error in model.frame.default(Terms, newdata, na.action = na.action, xlev = object$xlevels) : 
+  factor ms_zoning has new levels A (agr) 
+```
+
+
+(고급문제: 위의 에러는 어떻게 해결할 수 있을까?)
+
+선형모형 자체는 일반적으로 높은 예측력을 보이지 않기 때문에,
+다음처럼 스텝(stepwise) 절차를 통한 변수선택을 시행할 수 있다.
+(실행시간 관계상 생략)
+독자들의 컴퓨터에서 실행해 볼 것을 권한다.
+
+```{r eval=FALSE}
+df_step <- stepAIC(df_lm_full, scope = list(upper = ~ ., lower = ~1))
+df_step
+anova(df_step)
+summary(df_step)
+length(coef(df_step))
+length(coef(df_lm_full))
+```
+참고로, 저자의 컴퓨터에서의 실행 후에
+원 모형의 모수 개수는 286, 
+스텝 변수선택 이후의 모수 개수는 147 이었다.
+
+만약 위와 같은 `df_lm_full`, `df_step` 모형이 
+제대로 작동하면 다음처럼 검증셋에서의 RMSE 오차값을 구할 수 있다.
+```{r eval=FALSE}
+y_obs <- validation$saleprice
+yhat_lm <- predict(df_lm_full, newdata=validation)
+yhat_step <- predict(df_step, newdata=validation)
+rmse(y_obs, yhat_lm)
+rmse(y_obs, yhat_step)
+```
+
+
+
+## B. glmnet 함수를 통한 라쏘 모형, 능형회귀, 변수선택
+
+```{r}
+xx <- model.matrix(saleprice ~ .-1, df)
+x <- xx[training_idx, ]
+y <- training$saleprice
+df_cvfit <- cv.glmnet(x, y)
+```
+
+람다 모수의 값에 따른 오차의 값의 변화 추이는 다음과 같다:
+```{r}
+plot(df_cvfit)
+# coef(df_cvfit, s = c("lambda.1se"))
+# coef(df_cvfit, s = c("lambda.min"))
+```
+
+
+라쏘 모형의 RMSE, MAE 값은:
+```{r}
+y_obs <- validation$saleprice
+yhat_glmnet <- predict(df_cvfit, s="lambda.min", newx=xx[validate_idx,])
+yhat_glmnet <- yhat_glmnet[,1] # change to a vector from [n*1] matrix
+rmse(y_obs, yhat_glmnet)
+mae(y_obs, yhat_glmnet)
+```
+
+
+## C. 나무모형
+
+`rpart::rpart()` 함수를 사용해
+나무 회귀분석모형을 적합하자.
+```{r}
+df_tr <- rpart(saleprice ~ ., data = training)
+df_tr
+# printcp(df_tr)
+# summary(df_tr)
+opar <- par(mfrow = c(1,1), xpd = NA)
+plot(df_tr)
+text(df_tr, use.n = TRUE)
+par(opar)
+```
+
+나무모형의 출력 결과를 살펴보면 최고의 집값으로 이어지는 변수의 조합은
+다음과 같음을 알 수 있다:
+```
+   3) overall_qual>=7.5 289 2.448313e+12 310114.40  
+     7) total_bsmt_sf>=1721.5 83 8.706003e+11 391959.40  
+      15) gr_liv_area>=2225.5 35 4.250778e+11 461694.10  
+        31) neighborhood=CollgCr,NoRidge,NridgHt,StoneBr 28 1.775330e+11 497176.50 *
+```
+
+
+아쉽게도 `rpart::rpart` 모형도 훈련셋에서 관측되지 않은 
+인자 레벨이 나오면 
+앞서와 같은 오류 메시지를 보내며 예측을 해내지 못한다:
+```{r eval=FALSE}
+yhat_tr <- predict(df_tr, validation)
+# rmse(y_obs, yhat_tr)
+```
+
+
+## D. 랜덤 포레스트
+`randomForest()` 함수를 적용할 때
+X 예측변수들중 문자열 변수들은 
+인자형 변수로 바꿔 줘야 한다.
+앞서 만들어둔 `training_f` 를 사용한다.
+
+```{r}
+set.seed(2017)
+df_rf <- randomForest(saleprice ~ ., training_f)
+df_rf
+```
+
+랜덤포레스트 모형의 오류 감소 추세 그래프는 다음과 같다:
+```{r}
+plot(df_rf)
+```
+
+각 변수들의 모형에의 기여도는 다음과 같다:
+```{r}
+varImpPlot(df_rf)
+```
+
+랜덤포레스트 모형의 예측결과는 다음과 같다:
+```{r}
+yhat_rf <- predict(df_rf, newdata=validation_f)
+rmse(y_obs, yhat_rf)
+mae(y_obs, yhat_rf)
+```
+
+
+## E. 부스팅 
+`gbm::gbm()` 함수로 부스팅 모형을 적합할 수 있다.
+랜덤포레스트와 마찬가지로 
+X 예측변수들중 문자열 변수들은 
+인자형 변수로 바꿔 줘야 한다.
+(실행시간 관계상 생략)
+
+```{r eval=FALSE}
+set.seed(2017)
+df_gbm <- gbm(saleprice ~ ., data=training_f,
+              n.trees=40000, cv.folds=3, verbose = TRUE)
+(best_iter = gbm.perf(df_gbm, method="cv"))
+yhat_gbm <- predict(df_gbm, n.trees=best_iter, newdata=validation_f)
+rmse(y_obs, yhat_gbm)
+```
+
+
+
+## 모형 비교, 최종 모형 선택, 일반화 성능 평가
+검증셋에서 예측능력이 가장 높은 (RMSE 값과 MAE 값이 가장 작은)
+것은 랜덤포레스트이다:
+```{r}
+tibble(method=c("glmnet", "rf"),
+       rmse=c(rmse(y_obs, yhat_glmnet), rmse(y_obs, yhat_rf)), 
+       mae=c(mae(y_obs, yhat_glmnet), mae(y_obs, yhat_rf)))
+```
+
+테스트셋을 이용해 랜덤포레스트모형의 일반화 능력을 계산해보자:
+```{r}
+y_obs_test <- test$saleprice
+yhat_rf_test <- predict(df_rf, newdata=test_f)
+rmse(y_obs_test, yhat_rf_test)
+mae(y_obs_test, yhat_rf_test)
+```
+
+
+다음과 같은 시각화로 예측모형들의 오차의 분포를 비교할 수 있다.
+glmnet 에 비해 
+랜덤포레스트 모형이
+아주 큰 예측오차의 수가 적은 것을 알 수 있다.
+즉, 랜덤포레스트 모형이 좀 더 로버스트하다고 할 수 있다.
+```{r}
+boxplot(list(# lm = y_obs-yhat_step,
+             # gbm = y_obs-yhat_gbm,
+             glmnet = y_obs-yhat_glmnet,
+             rf = y_obs-yhat_rf
+             ), ylab="Error in Validation Set")
+abline(h=0, lty=2, col='blue')
+```
+
+
+다음 시각화는 glmnet 과 random forest 예측값, 그리고 실제 관측치와의 
+관계를 보여준다. 
+RMSE, MAE 결과와 마찬가지로, 
+관측값과의 상관관계도 랜덤 포레스트가 더 높다:
+```{r}
+pairs(data.frame(y_obs=y_obs,
+                 # yhat_lm=yhat_lm,
+                 yhat_glmnet=c(yhat_glmnet),
+                 # yhat_tr=yhat_tr,
+                 yhat_rf=yhat_rf),
+      lower.panel=function(x,y){ points(x,y); abline(0, 1, col='red')},
+      upper.panel = panel.cor)
+```
+
+
+## 결론
+이번 자료는 차원도 높고,
+결측치도 많은 분석이 어려운 자료였다.
+하지만 비교적 적은 코딩으로
+예측력이 상당히 높은 
+랜덤포레스트 모형을 적합할 수 있었다.
+
+## 추가 연구 문제
+관심있는 독자는 이 데이터에서 추가로 다음 분석을 시도해 볼 것을 권한다:
+
+1. 훈련셋에서 관측되지 않았지만
+  검증/테스트셋에 나타나는 인자변수의 범주가 있을 때
+  `factor ... has new levels ...` 에러가 생긴다.
+  이 에러를 해결하려면 어떻게 하면 될까?
+  (위의 `df_lm` 과 `df_tr` 모형을 예로 설명하라)
+1. 이 데이터는 설명변수의 차원이 무척 높다.
+  높은 차원을 의미가 높은 낮은 차원으로 변환하는 방법 중 하나는
+  주성분분석(Principal Component Analysis, PCA) 이다.
+  `prcomp()` 로 X변수들의 주성분 분석을 시행하라.
+  몇개의 주성분으로
+1. X 변수들 사이의, 그리고 X-Y변수간의 흥미로운 관계는 어떤 것이 있을까?
+1. 비정형 자료등의 복잡한 고차원 (large $p$) 자료가
+  대량으로 있을 때 (large $n$)
+  딥러닝(deep learning)을 적용하여 높은 예측력을 얻을 수 있다.
+  딥러닝은 분류분석에 흔히 사용되지만
+  회귀분석에도 사용될 수 있다.
+  (Means Squared Error 혹은 L2를 cost function 으로 사용)
+  텐서플로우(tensorflow <https://www.tensorflow.org/>) 를 
+  사용하여 이 문제를 풀어보자.
+  랜덤포레스트보다 더 적은 오차를 얻을 수 있는가?
+
+
+# 14-1. (적포도주 품질 예측)
+회귀분석을 본문에 기술된 적포도주 데이터(winequality-red.csv)에 실행해보라. 
+결과를 슬라이드 10여 장
+내외로 요약하라.
+
+(생략; 교재 본문 참조)
+
+
+# 14-2. (전복 나이 예측)
+<https://goo.gl/R0Pyrt> (<http://archive.ics.uci.edu/ml/datasets/Abalone>) 
+데이터에 회귀분석을 적용하고, 결과를 슬라이드 10여 장 내외로 요약하라.
+
+(생략; 결측치가 없고, 변수 개수도 적은 간단한 문제입니다.)
+
+- n = 4177
+- p = 8
+- 결측치? - 없음
+- 반응변수:	`Rings`. integer. +1.5 gives the age in years.
+
+
+# 14-3. (대기 질 예측)
+<https://goo.gl/etZcrE> (<http://archive.ics.uci.edu/ml/datasets/Air+Quality>)
+데이터에 회귀분석을 적용하고, 결과를 슬라이드 10여 장 내외로 요약하라.
+
+(생략; 시계열 분석 데이터로 적당합니다.)
+
+- n = 9358
+- p = 15
+- 결측치? - 있음 (-200 값은 결측치)
+- 반응변수:	변수 2-11. 
+    기타 변수(날짜, 시간, 온도, 습도)등은 예측변수로 사용 가능.
+
+
+# 14-4. (자유 선택 과제)
+<https://goo.gl/hmyTre> (<https://archive.ics.uci.edu/ml/datasets.html>)
+혹은 <https://goo.gl/zSrO3C> (<https://www.kaggle.com/datasets>)
+에서 다른 고차원 회귀분석 데이터를 찾아서 본문에 설명한 분석을 실행하고, 
+결과를 슬라이드 10여 장 내외로 요약하라.
+
+(생략)
