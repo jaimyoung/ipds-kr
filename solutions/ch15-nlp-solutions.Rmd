@@ -1,0 +1,205 @@
+---
+title: "<따라 하며 배우는 데이터 과학> 15장 연습문제 해답"
+author: "권재명"
+date: "9/30/2017"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+
+(Author notes: Turn `cache=TRUE` in `knitr::opts_chunk()`
+leads to [this error](https://stackoverflow.com/questions/42394244).
+So, just use `cache=FALSE` for this markdown file)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=FALSE)
+```
+
+
+저자 책 웹페이지: <https://dataninja.me/ipds-kr/>
+
+
+# R 환경 준비
+일단은 필수패키지인 `tidyverse`, 그리고 
+NLP를 위한 몇가지 패키지를 로드하자.
+(로딩 메시지를 감추기 위해 `suppressMessages()` 명령을 사용.)
+```{r}
+# install.packages("tidyverse")
+suppressMessages(library(tidyverse))
+
+# install.packages(c("tm", "SnowballC", "wordcloud"))
+library(tm)
+library(SnowballC)
+library(wordcloud)
+```
+
+
+# 1. (유닉스 명령)
+`JEOPARDY_CSV.csv` 파일에서 유닉스의 cut, sort, uniq 명령을 사용하여 
+Round와 Category 변수의 도수 분포를 구하라.
+
+## Round 도수분포:
+```
+$ cut -d ',' -f 3 JEOPARDY_CSV.csv| sort | uniq -c
+   1  Round
+105912 Double Jeopardy!
+3631 Final Jeopardy!
+107384 Jeopardy!
+   3 Tiebreaker
+```
+위 방법의 단점은 첫 줄의 변수이름 (`Round`)도 출력에 포함된다는 것이다.
+하지만 간편히 자료를 살펴보는데는 좋은 방법이다.
+
+## Category 도수분포:
+`Category` 변수는 범주가 무척 많기 때문에,
+가장 빈도수가 높은 10가지 값만 표현했다. (`head -10`)
+이 방법의 단점은 카테고리가 따옴표 안의 문자열이므로, 쉼표를 포함할 수도
+있다는 것이다. 이러한 문제 없이 CSV 파일을 처리하려면 R이나 파이썬의
+CSV 파일 처리 라이브러리를 사용해야 한다.
+```
+$ cut -d ',' -f 4 JEOPARDY_CSV.csv| sort | uniq -c | sort -n -r | head -10
+ 547 "BEFORE & AFTER"
+ 519 "SCIENCE"
+ 496 "LITERATURE"
+ 418 "AMERICAN HISTORY"
+ 401 "POTPOURRI"
+ 377 "WORLD HISTORY"
+ 371 "WORD ORIGINS"
+ 351 "COLLEGES & UNIVERSITIES"
+ 349 "HISTORY"
+ 342 "SPORTS"
+
+```
+
+
+# 2. R 스튜디오의 샤이니 단어 구름 예제의 코드를 살펴보자
+(<https://goo.gl/Dpez2b>(<http://shiny.rstudio.com/gallery/word-cloud.html>)). 
+여기서 사용된 데이터는 무엇인가? 
+문서를 다운로드하여 문서에 대한 단어 구름을 그려보자.
+
+`server.R` 파일의 주석에서 볼 수 있듯이,
+<한여름밤의 꿈>,  <베니스의 상인>, <로미오와 줄리엣> 이다. 우리는
+<햄릿>을 사용하도록 하자.
+<http://www.gutenberg.org/cache/epub/1524/pg1524.txt>
+
+우선 햄릿 텍스트를 컴퓨터에 다운로드한다:
+```
+wget http://www.gutenberg.org/cache/epub/1524/pg1524.txt
+```
+
+R에서 읽어 들인 후,
+본문에 설명한 변환을 차례대로 해 준다.
+각 처리 이후에 코퍼스의 3144번째 줄이 어떻게 변환되는지
+출력해 보았다.
+(햄릿의 그 유명한 "to be, or not to be..." 독백이다.)
+```{r}
+text <- readLines("pg1524.txt", encoding="UTF-8")
+corpus <- Corpus(VectorSource(text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+as.character(corpus[[3144]])
+corpus <- tm_map(corpus, removePunctuation)
+as.character(corpus[[3144]])
+corpus <- tm_map(corpus, removeNumbers)
+as.character(corpus[[3144]])
+corpus <- tm_map(corpus, removeWords,
+                 c(stopwords('SMART'), "thy", "thou", "thee", "and", "but"))
+as.character(corpus[[3144]])
+corpus <- tm_map(corpus, stemDocument)
+as.character(corpus[[3144]])
+```
+
+위의 출력결과에서 볼 수 있듯이, 
+처리과정이 개선의 여지가 있다.
+예문에서의 `,--` 부분이 통째로 없어져서 `bethat` 이란 존재하지 않는
+단어가 나온 것이 그것이다.
+하지만 일단 위의 코퍼스를 사용하도록 하자.
+
+이제 단어구름을 생성할 수 있다:
+```{r}
+wordcloud(corpus, max.words=100, random.order=FALSE,
+          colors=brewer.pal(8, "Dark2"))
+```
+
+
+
+
+# 3. KoNLPy를 설치해보자.
+<http://konlpy-ko.readthedocs.io/ko/v0.4.3/install/> 
+설명대로 
+맥 컴퓨터, 파이썬 2.7 에서는 다음처럼 설치하면 된다:
+
+```{bash eval=FALSE}
+pip install konlpy     # Python 2.x
+```
+
+
+# 4. (국회 의안 내용 단어 구름)
+KoNLPy 홈페이지에는 국회 의안의 내용의 단어 구름을 그려주는 예제가 있다
+(<https://goo.gl/lDJxW3>, 
+<http://konlpy.org/ko/latest/examples/wordcloud/>). 
+R로 이 예를 구현하라
+
+
+
+의안의 텍스트를 다운로드하는 함수를 파이썬에서 번역하도록 하자:
+```{r}
+get_bill_text <- function(bill_num){
+  # R version of get_bill_text in KoNLPy homepage
+  # install.packages(c("XML", "RCurl")
+  suppressMessages(library(RCurl))
+  suppressMessages(library(XML))
+  url <- sprintf('http://pokr.kr/bill/%s/text', bill_num)
+  html <- getURL(url)
+  doc <- htmlParse(html, asText=TRUE, encoding = "UTF-8")
+  txt <- xpathSApply(doc, "//div[@id='bill-sections']/pre/text()")[[1]]
+  txt <- as(txt, "character") # change XMLInternalTextNode class object to chars
+  return(txt)
+}
+bill_txt <- get_bill_text('1904882')
+```
+
+이제 의안 텍스트는 준비 되었다.
+
+
+한글은 영어와는 달리 모든 단어가 아니라
+명사를 추출해서 단어 구름을 그리는 것이 의미가 있다.
+한글 NLP 를 위한 라이브러리 KoNLP 를 사용하도록 하자.
+<https://cran.r-project.org/web/packages/KoNLP/index.html>
+
+```{r}
+# install.packages("KoNLP")
+# The following line is added to make this document renders via knitr.
+# See <https://stackoverflow.com/questions/42394244/rstudio-knit-button-fail-to-load-rjava>
+dyn.load('/Library/Java/JavaVirtualMachines/jdk1.8.0_45.jdk/Contents/Home/jre/lib/server/libjvm.dylib')
+library(KoNLP)
+useSejongDic() # 세종 사전을 다운로드한다.
+nouns <- extractNoun(bill_txt) # 명사를 추출한다
+```
+
+명사를 사용해서, 이전처럼 코퍼스를 만든다:
+```{r}
+bill_corpus <- Corpus(VectorSource(nouns))
+bill_corpus <- tm_map(bill_corpus, content_transformer(tolower))
+bill_corpus <- tm_map(bill_corpus, removePunctuation)
+bill_corpus <- tm_map(bill_corpus, removeNumbers)
+bill_corpus <- tm_map(bill_corpus, removeWords, c(stopwords('english')))
+bill_corpus <- tm_map(bill_corpus, stemDocument)
+```
+
+
+이제 단어구름을 생성한다.
+맥에서는 폰트를 설정해 주어서 한글이 깨지지 않게 해 주어야 한다.
+```{r}
+par(family='Dotum')
+wordcloud(bill_corpus, max.words=100, random.order=FALSE,
+          colors=brewer.pal(8, "Dark2"))
+```
+
+## 참고문헌:
+
+- <http://konlpy.org/ko/latest/examples/wordcloud/>
+- <http://dbrang.tistory.com/1061>
+- <https://github.com/haven-jeon/KoNLP>
+- <http://freesearch.pe.kr/archives/4538>
+- <http://freesearch.pe.kr/archives/4446>
