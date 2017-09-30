@@ -410,7 +410,10 @@ pairs(data.frame(y_obs=y_obs,
   높은 차원을 의미가 높은 낮은 차원으로 변환하는 방법 중 하나는
   주성분분석(Principal Component Analysis, PCA) 이다.
   `prcomp()` 로 X변수들의 주성분 분석을 시행하라.
-  몇개의 주성분으로
+1. 원래 X변수들 대신 주성분 변수를 사용한 회귀분석을
+  주성분회귀 (principal component regression, PCR) 이라고 한다.
+   R의 `pls` 라이브러리를 사용하여 주성분 분석을 시행하라.
+   RMSE, MAE 오차의 크기는?
 1. X 변수들 사이의, 그리고 X-Y변수간의 흥미로운 관계는 어떤 것이 있을까?
 1. 비정형 자료등의 복잡한 고차원 (large $p$) 자료가
   대량으로 있을 때 (large $n$)
