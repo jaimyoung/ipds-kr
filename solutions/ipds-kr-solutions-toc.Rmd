@@ -1,0 +1,53 @@
+---
+title: "<따라 하며 배우는 데이터 과학> 연습문제 해답"
+author: "권재명"
+date: "9/30/2017"
+output:
+  html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+
+- 저자 책 웹페이지: <https://dataninja.me/ipds-kr/>
+- 질문이나 피드백:
+    - <dataninjame@gmail.com>
+    - <https://www.facebook.com/dataninja.me/>
+
+
+## 연습문제 해답
+- 3장 (tidyverse) 해답: http://rpubs.com/dataninja/ipds-kr-ch03
+- 4장 (ggplot2) 해답: http://rpubs.com/dataninja/ipds-kr-ch04
+- 8-9장 (classification) 해답: http://rpubs.com/dataninja/ipds-kr-ch08
+- 10-11장 (classification) 해답: http://rpubs.com/dataninja/ipds-kr-ch10
+- 13-14장 (regression) 해답: http://rpubs.com/dataninja/ipds-kr-ch13
+- 15장 (word cloud) 해답: http://rpubs.com/dataninja/ipds-kr-ch15
+
+연습문제 해답들은 R마크다운 (RMarkdown) 으로 작성되었습니다.
+
+원본 파일들은 다음 리포에서 확인할 수 있습니다.
+<https://github.com/jaimyoung/ipds-kr/tree/master/solutions> 
+
+
+## 보너스: 본문 그림 4-11, 12
+* But it's interactive, using <https://plot.ly/r/>
+
+```{r}
+suppressMessages(library(tidyverse))
+library(gapminder)
+suppressMessages(library(plotly))
+
+g1 <- gapminder %>% filter(year==2002) %>%
+  ggplot(aes(gdpPercap, lifeExp, text=country)) +
+  geom_point(aes(size=pop, col=continent)) + scale_x_log10() +
+  ggtitle("Gapminder data for 2007")
+suppressMessages(ggplotly(g1))
+
+g2 <- gapminder %>%
+  ggplot(aes(year, lifeExp, group=country)) +
+  geom_line() +
+  facet_wrap(~ continent)
+suppressMessages(ggplotly(g2))
+```
+
