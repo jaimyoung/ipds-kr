@@ -177,24 +177,44 @@ useSejongDic() # 세종 사전을 다운로드한다.
 nouns <- extractNoun(bill_txt) # 명사를 추출한다
 ```
 
-명사를 사용해서, 이전처럼 코퍼스를 만든다:
-```{r}
-bill_corpus <- Corpus(VectorSource(nouns))
-bill_corpus <- tm_map(bill_corpus, content_transformer(tolower))
-bill_corpus <- tm_map(bill_corpus, removePunctuation)
-bill_corpus <- tm_map(bill_corpus, removeNumbers)
-bill_corpus <- tm_map(bill_corpus, removeWords, c(stopwords('english')))
-bill_corpus <- tm_map(bill_corpus, stemDocument)
-```
 
-
-이제 단어구름을 생성한다.
+이제 `nouns` 명사 벡터를 사용해 단어구름을 생성한다.
 맥에서는 폰트를 설정해 주어서 한글이 깨지지 않게 해 주어야 한다.
 ```{r}
+# dplyr::glimpse(nouns)
 par(family='Dotum')
-wordcloud(bill_corpus, max.words=100, random.order=FALSE,
+wordcloud(nouns, max.words=100, random.order=FALSE,
           colors=brewer.pal(8, "Dark2"))
 ```
+
+`wordcloud2` 패키지(<https://cran.r-project.org/web/packages/wordcloud2/index.html>)
+를 사용하면 자바스크립트를 이용한 단어구름을 그려준다. 
+이를 위해서 단어 빈도 데이터프레임을 먼저 만들고 다음 옵션을 추가했다:
+
+- `fontFamily = "Dotum"` : 한글폰트 사용
+- `shuffle=FALSE` : 재현가능하도록 랜덤화 방지
+- `minRotation=0, maxRotation=0,` : 단어회전 금지
+- `color=rep(brewer.pal(8, "Dark2"), length.out=n_words_to_show)` : 
+    위의 예제와 동일한 색깔 팔레트 사용
+
+출력결과는 다음과 같다:
+
+```{r}
+# install.packages("wordcloud2")
+library(wordcloud2)
+n_words_to_show <- 100
+df <- tibble(noun=nouns) %>% 
+  group_by(noun) %>% 
+  count() %>% 
+  arrange(desc(n)) %>%
+  head(n_words_to_show) %>%
+  as.data.frame()
+# df %>% glimpse()
+wordcloud2(df %>% head(n_words_to_show), fontFamily = "Dotum",
+           shuffle=FALSE, minRotation=0, maxRotation=0,
+           color=rep(brewer.pal(8, "Dark2"), length.out=n_words_to_show))
+```
+
 
 ## 참고문헌:
 
