@@ -1,0 +1,75 @@
+---
+title: "<따라 하며 배우는 데이터 과학> 보충내용 I: 비지도학습과 차원축소"
+author: "권재명"
+date: "10/13/2017"
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, cache=TRUE)
+```
+이번 장에서는 비지도 학습 (unsupervised learning)과 차원축소(dimensionality reduction)을 위한 방법을 알아보자.
+우선 필수패키지를 로드한다:
+```{r}
+suppressPackageStartupMessages(library(tidyverse))
+```
+
+예제 자료로 유명한 피셔의 `iris`자료를 사용하자.
+R 내장 자료에서
+변수 이름을 좀 더 다루기 쉬운 
+형태(소문자; 마침표 대신 밑줄)로 바꾼다.
+그러고 나면 대략 다음과 같은 모양이다.
+```{r}
+names(iris) <- gsub("\\.", "_", tolower(names(iris)))
+iris %>% glimpse()
+```
+
+그리는데 시간이 좀 걸리지만 `GGally` 패키지를 이용하여
+다섯 변수들간의 관계를 산점도행렬로 그려볼 수 있다:
+```{r}
+GGally::ggpairs(iris, mapping=aes(color=species))
+```
+
+이 중에 처음 4변수들간에는 큰 상관관계가 있다:
+```{r}
+iris %>% select(-species) %>% cor()
+```
+
+차원축소는 이처럼 차원이 높은 변수 $X_1, ..., X_p$ 를
+낮은 차원의 변수 $X'_1, ..., X'_k$ ($k<p$) 로 줄이는 작업이다.
+
+차원축소를 위한 고전적인 방법중 하나는
+MDS (Multidimensional Scaling)이다.
+$n$개의 관측치간의
+거리 (distance) 혹은 비유사성(dissimilarity)이
+행렬 $\{d_{ij}, i,j=1, ...,n\}$ 
+(보통 원래 $p$ 차원에서의 유클리드 거리)
+로 주어진다고 하자.
+MDS 는 $k (<p)$ 차원 안에서
+$n$ 관측치의 좌표간의 유클리드 거리 
+$\{d'_{ij}, i,j=1,...,n\}$ 가
+원래 $d_{ij}$ 와 가능한한 가깝도록
+$X_{ij}, i=1,...,n, j=1,...,k$ 를 생성한다.
+시각화를 위해 보통 $k=2$ 가 많이 사용된다.
+
+R에서는 다음처럼 실행한다:
+```{r}
+orig_coords <- iris %>% select(-species) 
+dim(orig_coords)
+dist_mat <- orig_coords %>% dist(method="euclidean")
+dim(as.matrix(dist_mat))
+mds_coords <- cmdscale(dist_mat, k=2)
+dim(mds_coords)
+```
+
+4차원 공간의 150개의 관측치에서 150*150 거리행렬을 생성한 후
+이를 사용해 2차원 공간으로 차원을 축소했다.
+축소된 2차원에서 각 종들의 분포는 다음과 같다.
+```{r}
+df <- tibble(x1=mds_coords[,1], x2=mds_coords[,2],
+             species=iris$species)
+df %>% ggplot(aes(x1, x2, col=species)) + geom_point()
+```
+
