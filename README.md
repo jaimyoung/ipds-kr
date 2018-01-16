@@ -34,3 +34,11 @@
 - 각 서브디렉토리는 RStudio 프로젝트입니다. 
 - 각 서브디렉토리 안에 있는 *.Rproject 파일을 열면 R스튜디오 프로젝트가 열립니다. 
 - *.R 파일들을 열어서 책을 따라 실행해 보세요.
+## Credits
+The gapminder data file
+`notebooks/data/gapminder.tsv` is copied from
+<https://github.com/jennybc/gapminder/blob/master/data-raw/07_gap-merged-with-continent.tsv>
+by Jennifer Bryan (NA). gapminder: Data from Gapminder.
+https://github.com/jennybc/gapminder,
+http://www.gapminder.org/data/,
+https://doi.org/10.5281/zenodo.594018.
