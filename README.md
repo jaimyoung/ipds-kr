@@ -28,12 +28,18 @@
 - R스튜디오 (RStudio) <https://www.rstudio.com/>
 
 
-## 코드 사용법
+## 코드 사용법: R
 
 - 컴퓨터에 git clone 클론해서 사용하세요.
 - 각 서브디렉토리는 RStudio 프로젝트입니다. 
 - 각 서브디렉토리 안에 있는 *.Rproject 파일을 열면 R스튜디오 프로젝트가 열립니다. 
 - *.R 파일들을 열어서 책을 따라 실행해 보세요.
+
+## 코드 사용법: 파이썬
+
+주피터 노트북을 `notebooks` 폴더에서 시작하면 됩니다.
+자세한 내용은 <https://dataninja.me/ipds-kr/python-setup> 을 참조.
+
 ## Credits
 The gapminder data file
 `notebooks/data/gapminder.tsv` is copied from
