@@ -13,3 +13,6 @@ plots/
 **/html/
 **/*_files/
 *.html
+
+.ipynb_checkpoints
+*cache
